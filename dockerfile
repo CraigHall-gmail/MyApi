@@ -17,9 +17,7 @@ RUN dotnet publish "MyApi.csproj" \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Non-root user (required for ACA / best practice)
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-USER appuser
+USER $APP_UID
 
 # ACA base image sets ASPNETCORE_HTTP_PORTS=8080
 # so this is redundant but explicit is better
