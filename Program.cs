@@ -1,13 +1,24 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+// Health endpoints — ACA uses these for probes
+app.MapHealthChecks("/health/live");
+app.MapHealthChecks("/health/ready");
+
+// Version endpoint — useful for verifying which revision is live
+app.MapGet("/version", () => new {
+    version = "1.0.0",
+    revision = Environment.GetEnvironmentVariable("REVISION_LABEL") ?? "unknown",
+    timestamp = DateTime.UtcNow
+});
+
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (!app.Environment.IsProduction())
 {
     app.MapOpenApi();
 }
@@ -32,6 +43,11 @@ app.MapGet("/weatherforecast", () =>
     return forecast;
 })
 .WithName("GetWeatherForecast");
+
+if (!app.Environment.IsProduction()) {
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.Run();
 
