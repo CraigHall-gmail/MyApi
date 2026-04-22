@@ -3,12 +3,11 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy csproj first for layer caching
-COPY ["MyApi/MyApi.csproj", "MyApi/"]
-RUN dotnet restore "MyApi/MyApi.csproj"
+COPY ["MyApi.csproj", "."]
+RUN dotnet restore "MyApi.csproj"
 
 # Copy everything else and publish
 COPY . .
-WORKDIR /src/MyApi
 RUN dotnet publish "MyApi.csproj" \
     -c Release \
     -o /app/publish \
