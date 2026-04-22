@@ -6,6 +6,8 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
+
 // Health endpoints — ACA uses these for probes
 app.MapHealthChecks("/health/live");
 app.MapHealthChecks("/health/ready");
@@ -18,10 +20,10 @@ app.MapGet("/version", () => new {
 });
 
 // Configure the HTTP request pipeline.
-if (!app.Environment.IsProduction())
-{
+//if (!app.Environment.IsProduction())
+//{
     app.MapOpenApi();
-}
+//}
 
 app.UseHttpsRedirection();
 
@@ -44,10 +46,10 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast");
 
-if (!app.Environment.IsProduction()) {
+//if (!app.Environment.IsProduction()) {
     app.UseSwagger();
     app.UseSwaggerUI();
-}
+//}
 
 app.Run();
 
