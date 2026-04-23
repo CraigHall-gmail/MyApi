@@ -15,6 +15,11 @@ on:
         type: boolean
         default: false
 
+permissions:          # ← add this block
+  id-token: write
+  contents: read
+  pull-requests: write
+  
 jobs:
   deploy:
     uses: ./.github/workflows/_shared-aca-dev.yml
