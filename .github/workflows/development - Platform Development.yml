@@ -1,4 +1,4 @@
-name: Deploy – Platform Dev
+name: main - Platform Development - Deploy
 
 on:
   push:
