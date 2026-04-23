@@ -1,0 +1,105 @@
+name: Shared – Deploy ACA Environment (Terraform)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      working_directory:
+        required: false
+        type: string
+        default: infra/development
+      tf_version:
+        required: false
+        type: string
+        default: "1.8.0"
+      destroy:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write    # allows the plan to comment on PRs
+
+jobs:
+  terraform:
+    name: Terraform (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    env:
+      # azurerm provider picks these up automatically
+      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC:        "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.tf_version }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        continue-on-error: false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -var-file="terraform.tfvars" \
+            -out=tfplan \
+            -detailed-exitcode \
+            ${{ inputs.destroy && '-destroy' || '' }}
+        # exit 0 = no changes, 1 = error, 2 = changes pending
+        continue-on-error: true
+
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `### Terraform Plan – \`${{ inputs.environment }}\`
+            \`\`\`
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+            *Triggered by @${{ github.actor }}*`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - name: Fail on Plan Error
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Apply
+        if: |
+          github.ref == 'refs/heads/main' &&
+          steps.plan.outputs.exitcode == '2'
+        run: terraform apply -auto-approve tfplan
