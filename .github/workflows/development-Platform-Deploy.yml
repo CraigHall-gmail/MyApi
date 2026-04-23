@@ -19,7 +19,7 @@ concurrency:
   group: terraform-${{ github.ref }}
   cancel-in-progress: false
   
-permissions:          # ← add this block
+permissions:          
   id-token: write
   contents: read
   pull-requests: write
