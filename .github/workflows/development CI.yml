@@ -1,4 +1,4 @@
-name: Development CI - Build & Push to ACR
+name: development CI - Build & Push to ACR
 
 on:
   push:
