@@ -1,4 +1,4 @@
-name: Shared – Deploy ACA Environment (Terraform)
+name: Shared – Deploy Platform (Terraform)
 
 on:
   workflow_call:
