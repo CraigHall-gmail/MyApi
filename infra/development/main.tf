@@ -22,6 +22,13 @@ provider "azurerm" {
   # Credentials injected via ARM_* env vars in GitHub Actions (OIDC)
 }
 
+data "azurerm_client_config" "current" {}
+
+import {
+  to = azurerm_container_app.api
+  id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group}/providers/Microsoft.App/containerApps/${var.app_name}"
+}
+
 # ── Resource Group ─────────────────────────────────────────────────────────────
 resource "azurerm_resource_group" "this" {
   name     = var.resource_group
