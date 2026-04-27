@@ -22,6 +22,13 @@ provider "azurerm" {
   # Credentials injected via ARM_* env vars in GitHub Actions (OIDC)
 }
 
+data "azurerm_client_config" "current" {}
+
+import {
+  to = azurerm_container_app.api
+  id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group}/providers/Microsoft.App/containerApps/${var.app_name}"
+}
+
 # ── Resource Group ─────────────────────────────────────────────────────────────
 resource "azurerm_resource_group" "this" {
   name     = var.resource_group
@@ -54,6 +61,22 @@ data "azurerm_container_registry" "this" {
   resource_group_name = var.acr_resource_group
 }
 
+# ── User-assigned identity — created before the app so AcrPull can be
+#    assigned before the container app tries to pull its first image.
+resource "azurerm_user_assigned_identity" "api" {
+  name                = "id-${var.app_name}"
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  tags                = var.tags
+}
+
+# ── AcrPull role — must exist before the container app is created ─────────────
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                = data.azurerm_container_registry.this.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.api.principal_id
+}
+
 # ── Container App ──────────────────────────────────────────────────────────────
 resource "azurerm_container_app" "api" {
   name                         = var.app_name
@@ -62,22 +85,29 @@ resource "azurerm_container_app" "api" {
   revision_mode                = "Multiple"
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.api.id]
   }
 
   registry {
     server   = data.azurerm_container_registry.this.login_server
-    identity = "System"
+    identity = azurerm_user_assigned_identity.api.id
   }
 
   template {
     container {
+      # Placeholder for initial provisioning — CD workflow deploys the real image.
       name   = var.app_name
-      image  = "${data.azurerm_container_registry.this.login_server}/${var.app_name}:${var.image_tag}"
+      image  = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu    = 0.5
       memory = "1Gi"
+
+      env {
+        name  = "PORT"
+        value = "8080"
+      }
     }
-    min_replicas = 2
+    min_replicas = 1
     max_replicas = 10
   }
 
@@ -91,11 +121,18 @@ resource "azurerm_container_app" "api" {
   }
 
   tags = var.tags
-}
 
-# ── AcrPull role for the container app managed identity ───────────────────────
-resource "azurerm_role_assignment" "acr_pull" {
-  scope                = data.azurerm_container_registry.this.id
-  role_definition_name = "AcrPull"
-  principal_id         = azurerm_container_app.api.identity[0].principal_id
+  depends_on = [azurerm_role_assignment.acr_pull]
+
+  lifecycle {
+    ignore_changes = [
+      template[0].container[0].image, # CD pipeline owns the image
+    ]
+  }
+
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "15m"
+  }
 }

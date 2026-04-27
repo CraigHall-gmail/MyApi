@@ -1,19 +1,25 @@
 name: development CD — Blue/Green Deploy to ACA
 
 on:
-  workflow_run:
-    workflows: ["development CI - Build & Push to ACR"]
-    types: [completed]
-    branches: [development]
+  workflow_call:
+    inputs:
+      image_sha:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: "Full image SHA to deploy"
+        required: true
+        type: string
 
 env:
-  RG:       rg-myapi-dev
-  APP_NAME: myapi
-  ACR_NAME: acrimagereg
+  RG:       rg-myapi-dev # Container App Resource Group
+  APP_NAME: myapi # Container App name and ACR image name
+  ACR_NAME: acrimagereg # Container Registry Name
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -36,7 +42,7 @@ jobs:
       - name: Deploy green revision (0% traffic)
         id: deploy-green
         run: |
-          SHA=${{ github.event.workflow_run.head_sha }}
+          SHA=${{ inputs.image_sha }}
           SHORT_SHA=${SHA:0:7}
           REVISION_SUFFIX=green-$SHORT_SHA
 
@@ -65,7 +71,10 @@ jobs:
             [ "$STATUS" = "Running" ] && break
             sleep 10
           done
-          [ "$STATUS" != "Running" ] && { echo "Revision failed to reach Running state"; exit 1; }
+          if [ "$STATUS" != "Running" ]; then
+            echo "Revision failed to reach Running state"
+            exit 1
+          fi
 
       # ──────────────────────────────────────────────
       # 3. Smoke test via revision URL (zero prod traffic)
