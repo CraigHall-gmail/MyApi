@@ -3,8 +3,12 @@ name: development CI - Build & Push to ACR
 on:
   push:
     branches: [development]
+    paths-ignore:
+      - 'infra/**'
   pull_request:
     branches: [development]
+    paths-ignore:
+      - 'infra/**'
   workflow_dispatch:
 
 env:
