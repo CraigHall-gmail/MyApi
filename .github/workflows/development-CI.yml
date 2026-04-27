@@ -77,3 +77,12 @@ jobs:
       - name: Output image reference
         run: |
           echo "Pushed: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
+
+  # ── Job 3: Deploy ────────────────────────────
+  deploy:
+    needs: build-push
+    if: github.ref == 'refs/heads/development'
+    uses: ./.github/workflows/development-CD.yml
+    with:
+      image_sha: ${{ needs.build-push.outputs.image-tag }}
+    secrets: inherit
