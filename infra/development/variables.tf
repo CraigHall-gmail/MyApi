@@ -24,3 +24,23 @@ variable "tags" {
   description = "Resource tags"
   default     = {}
 }
+
+variable "acr_name" {
+  type        = string
+  description = "Name of the existing Azure Container Registry"
+}
+
+variable "acr_resource_group" {
+  type        = string
+  description = "Resource group containing the ACR"
+}
+
+variable "app_name" {
+  type        = string
+  description = "Name of the Container App"
+}
+
+variable "image_tag" {
+  type        = string
+  description = "Container image tag to deploy"
+}
