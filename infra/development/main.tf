@@ -89,10 +89,10 @@ resource "azurerm_container_app" "api" {
 
   template {
     container {
-      name  = var.app_name
-      # Placeholder image for initial provisioning — the CD workflow deploys the real image.
-      image = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
-      cpu   = 0.5
+      # Placeholder for initial provisioning — CD workflow deploys the real image.
+      name   = var.app_name
+      image  = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+      cpu    = 0.5
       memory = "1Gi"
     }
     min_replicas = 2
