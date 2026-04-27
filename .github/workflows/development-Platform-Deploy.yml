@@ -2,7 +2,7 @@ name: development - Platform Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [development]
     paths:
       - 'infra/development/**'
   pull_request:
@@ -28,7 +28,7 @@ jobs:
   deploy:
     uses: ./.github/workflows/_shared-aca-dev.yml
     with:
-      environment:        dev
+      environment:        development
       working_directory:  infra/development
       tf_version:         "1.8.0"
       destroy:            ${{ inputs.destroy || false }}
