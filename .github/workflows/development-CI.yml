@@ -3,8 +3,13 @@ name: development CI - Build & Push to ACR
 on:
   push:
     branches: [development]
+    paths-ignore:
+      - 'infra/**'
   pull_request:
     branches: [development]
+    paths-ignore:
+      - 'infra/**'
+  workflow_dispatch:
 
 env:
   ACR_NAME: acrimagereg
@@ -72,3 +77,15 @@ jobs:
       - name: Output image reference
         run: |
           echo "Pushed: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
+
+  # ── Job 3: Deploy ────────────────────────────
+  deploy:
+    needs: build-push
+    if: github.ref == 'refs/heads/development'
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/development-CD.yml
+    with:
+      image_sha: ${{ needs.build-push.outputs.image-tag }}
+    secrets: inherit

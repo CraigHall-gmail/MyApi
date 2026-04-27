@@ -28,10 +28,13 @@ jobs:
   deploy:
     uses: ./.github/workflows/_shared-aca-dev.yml
     with:
-      environment:        development
-      working_directory:  infra/development
-      tf_version:         "1.8.0"
-      destroy:            ${{ inputs.destroy || false }}
+      environment:               development
+      working_directory:         infra/development
+      tf_version:                "1.8.0"
+      destroy:                   ${{ inputs.destroy || false }}
+      tf_state_storage_account:  myapiterraformstate
+      tf_state_container:        tfstate
+      tf_state_key:              development/api.tfstate
     secrets:
       AZURE_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
