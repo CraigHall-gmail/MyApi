@@ -54,6 +54,22 @@ data "azurerm_container_registry" "this" {
   resource_group_name = var.acr_resource_group
 }
 
+# ── User-assigned identity — created before the app so AcrPull can be
+#    assigned before the container app tries to pull its first image.
+resource "azurerm_user_assigned_identity" "api" {
+  name                = "id-${var.app_name}"
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  tags                = var.tags
+}
+
+# ── AcrPull role — must exist before the container app is created ─────────────
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                = data.azurerm_container_registry.this.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.api.principal_id
+}
+
 # ── Container App ──────────────────────────────────────────────────────────────
 resource "azurerm_container_app" "api" {
   name                         = var.app_name
@@ -62,19 +78,21 @@ resource "azurerm_container_app" "api" {
   revision_mode                = "Multiple"
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.api.id]
   }
 
   registry {
     server   = data.azurerm_container_registry.this.login_server
-    identity = "System"
+    identity = azurerm_user_assigned_identity.api.id
   }
 
   template {
     container {
-      name   = var.app_name
-      image  = "${data.azurerm_container_registry.this.login_server}/${var.app_name}:${var.image_tag}"
-      cpu    = 0.5
+      name  = var.app_name
+      # Placeholder image for initial provisioning — the CD workflow deploys the real image.
+      image = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+      cpu   = 0.5
       memory = "1Gi"
     }
     min_replicas = 2
@@ -91,11 +109,6 @@ resource "azurerm_container_app" "api" {
   }
 
   tags = var.tags
-}
 
-# ── AcrPull role for the container app managed identity ───────────────────────
-resource "azurerm_role_assignment" "acr_pull" {
-  scope                = data.azurerm_container_registry.this.id
-  role_definition_name = "AcrPull"
-  principal_id         = azurerm_container_app.api.identity[0].principal_id
+  depends_on = [azurerm_role_assignment.acr_pull]
 }
