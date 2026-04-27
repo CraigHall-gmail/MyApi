@@ -82,6 +82,9 @@ jobs:
   deploy:
     needs: build-push
     if: github.ref == 'refs/heads/development'
+    permissions:
+      id-token: write
+      contents: read
     uses: ./.github/workflows/development-CD.yml
     with:
       image_sha: ${{ needs.build-push.outputs.image-tag }}
