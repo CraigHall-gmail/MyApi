@@ -65,7 +65,10 @@ jobs:
             [ "$STATUS" = "Running" ] && break
             sleep 10
           done
-          [ "$STATUS" != "Running" ] && { echo "Revision failed to reach Running state"; exit 1; }
+          if [ "$STATUS" != "Running" ]; then
+            echo "Revision failed to reach Running state"
+            exit 1
+          fi
 
       # ──────────────────────────────────────────────
       # 3. Smoke test via revision URL (zero prod traffic)
