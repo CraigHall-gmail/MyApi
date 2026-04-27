@@ -102,7 +102,7 @@ resource "azurerm_container_app" "api" {
       cpu    = 0.5
       memory = "1Gi"
     }
-    min_replicas = 2
+    min_replicas = 1
     max_replicas = 10
   }
 
@@ -118,4 +118,16 @@ resource "azurerm_container_app" "api" {
   tags = var.tags
 
   depends_on = [azurerm_role_assignment.acr_pull]
+
+  lifecycle {
+    ignore_changes = [
+      template[0].container[0].image, # CD pipeline owns the image
+    ]
+  }
+
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "15m"
+  }
 }
