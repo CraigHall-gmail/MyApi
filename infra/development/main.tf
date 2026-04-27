@@ -101,6 +101,11 @@ resource "azurerm_container_app" "api" {
       image  = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       cpu    = 0.5
       memory = "1Gi"
+
+      env {
+        name  = "PORT"
+        value = "8080"
+      }
     }
     min_replicas = 1
     max_replicas = 10
