@@ -1,0 +1,120 @@
+name: development CD — Blue/Green Deploy to ACA
+
+on:
+  workflow_run:
+    workflows: ["development CI - Build & Push to ACR"]
+    types: [completed]
+    branches: [development]
+
+env:
+  RG:       rg-myapi-dev
+  APP_NAME: myapi
+  ACR_NAME: acrimagereg
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    environment: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ──────────────────────────────────────────────
+      # 1. Deploy GREEN revision at 0% traffic
+      # ──────────────────────────────────────────────
+      - name: Deploy green revision (0% traffic)
+        id: deploy-green
+        run: |
+          SHA=${{ github.event.workflow_run.head_sha }}
+          SHORT_SHA=${SHA:0:7}
+          REVISION_SUFFIX=green-$SHORT_SHA
+
+          az containerapp update \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.APP_NAME }}:$SHA \
+            --revision-suffix $REVISION_SUFFIX \
+            --set-env-vars REVISION_LABEL=$REVISION_SUFFIX
+
+          echo "revision=${{ env.APP_NAME }}--$REVISION_SUFFIX" >> $GITHUB_OUTPUT
+          echo "suffix=$REVISION_SUFFIX" >> $GITHUB_OUTPUT
+
+      # ──────────────────────────────────────────────
+      # 2. Wait for green revision to be running
+      # ──────────────────────────────────────────────
+      - name: Wait for green revision to be running
+        run: |
+          for i in {1..20}; do
+            STATUS=$(az containerapp revision show \
+              --name ${{ env.APP_NAME }} \
+              --resource-group ${{ env.RG }} \
+              --revision ${{ steps.deploy-green.outputs.revision }} \
+              --query properties.runningState -o tsv)
+            echo "Revision state: $STATUS"
+            [ "$STATUS" = "Running" ] && break
+            sleep 10
+          done
+          [ "$STATUS" != "Running" ] && { echo "Revision failed to reach Running state"; exit 1; }
+
+      # ──────────────────────────────────────────────
+      # 3. Smoke test via revision URL (zero prod traffic)
+      # ──────────────────────────────────────────────
+      - name: Get green revision URL
+        id: revision-url
+        run: |
+          FQDN=$(az containerapp revision show \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --revision ${{ steps.deploy-green.outputs.revision }} \
+            --query properties.fqdn -o tsv)
+          echo "url=https://$FQDN" >> $GITHUB_OUTPUT
+
+      - name: Smoke test green revision
+        run: |
+          curl --fail --retry 6 --retry-delay 10 \
+            ${{ steps.revision-url.outputs.url }}/health/ready
+          curl --fail \
+            ${{ steps.revision-url.outputs.url }}/version
+
+      # ──────────────────────────────────────────────
+      # 4. Shift traffic: 100% → green
+      # ──────────────────────────────────────────────
+      - name: Promote green to 100% traffic
+        run: |
+          az containerapp ingress traffic set \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --revision-weight \
+              ${{ steps.deploy-green.outputs.revision }}=100
+
+      # ──────────────────────────────────────────────
+      # 5. Deactivate old revisions (keep 1 for rollback)
+      # ──────────────────────────────────────────────
+      - name: Deactivate old revisions
+        run: |
+          # All active revisions except the green one, sorted oldest-first.
+          # tail -n +2 skips the most recent old revision (rollback target).
+          OLD_REVISIONS=$(az containerapp revision list \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --query "sort_by([?properties.active && name != '${{ steps.deploy-green.outputs.revision }}'], &properties.createdTime)[].name" \
+            -o tsv | head -n -1)
+
+          for rev in $OLD_REVISIONS; do
+            echo "Deactivating: $rev"
+            az containerapp revision deactivate \
+              --name ${{ env.APP_NAME }} \
+              --resource-group ${{ env.RG }} \
+              --revision "$rev"
+          done
