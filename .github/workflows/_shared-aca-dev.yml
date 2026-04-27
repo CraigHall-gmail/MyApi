@@ -101,6 +101,6 @@ jobs:
 
       - name: Terraform Apply
         if: |
-          github.ref == 'refs/heads/main' &&
+          github.ref == 'refs/heads/development' &&
           steps.plan.outputs.exitcode == '2'
         run: terraform apply -auto-approve tfplan

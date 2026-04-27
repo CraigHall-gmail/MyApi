@@ -7,8 +7,8 @@ on:
     branches: [development]
 
 env:
-  RG:       Playground # Container Registry Resource Group
-  APP_NAME: myapi # Image
+  RG:       rg-myapi-dev # Container App Resource Group
+  APP_NAME: myapi # Container App name and ACR image name
   ACR_NAME: acrimagereg # Container Registry Name
 
 jobs:
