@@ -9,9 +9,9 @@
 #
 # Triggers:
 #   • workflow_call  – called automatically by development-CI.yml after a
-#                      successful image push (passes image_sha as input)
+#                      successful image push (passes image_sha and version)
 #   • workflow_dispatch  – manual deployment of any specific image SHA;
-#                          useful for re-deploying a previous known-good build
+#                          optionally accepts a version for the revision suffix
 #
 # Blue/Green deployment sequence:
 #   1. Deploy new (green) revision at 0% traffic
@@ -21,11 +21,19 @@
 #   5. Deactivate old revisions (keeping the most recent one for rollback)
 #   6. [On failure] Deactivate the green revision to revert to prior state
 #
+# Revision naming:
+#   With version : myapi--v{major}-{minor}-{patch}-{7-char-sha}
+#                  e.g.  myapi--v1-0-0-abc1234
+#   Without version (manual dispatch, no version supplied):
+#                  myapi--sha-{7-char-sha}
+#                  e.g.  myapi--sha-abc1234
+#
 # Rollback:
-#   Automatic — if any step fails before traffic promotion, the green revision
-#   is deactivated and all traffic remains on the previous revision.
-#   For manual rollback after promotion, reactivate the retained old revision
-#   via the Azure portal or:
+#   Automatic — if steps 1–4 fail, the green revision is deactivated and all
+#   traffic remains on the previous revision. Step 5 (cleanup) uses
+#   continue-on-error so a housekeeping failure after a successful promotion
+#   does not roll back a live revision.
+#   For manual rollback after promotion, reactivate the retained old revision:
 #     az containerapp ingress traffic set \
 #       --name myapi --resource-group rg-myapi-dev \
 #       --revision-weight <old-revision-name>=100
@@ -48,11 +56,19 @@ on:
       image_sha:
         required: true
         type: string
+      version:
+        required: false
+        type: string
+        description: "Semantic version from MyApi.csproj (e.g. 1.0.0)"
   workflow_dispatch:
     inputs:
       image_sha:
         description: "Full image SHA to deploy"
         required: true
+        type: string
+      version:
+        description: "Semantic version (e.g. 1.0.0) — used for revision suffix"
+        required: false
         type: string
 
 # Prevents concurrent deploys which could leave revision traffic weights in an
@@ -82,15 +98,25 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # ── Step 1: Deploy GREEN revision at 0% traffic ───────────────────────
-      # Creates a new Container App revision with the target image but no
-      # ingress traffic. The revision name is deterministic from the SHA so
-      # concurrent calls with the same SHA are idempotent.
+      # Builds a deterministic revision suffix from the semantic version and
+      # short SHA, e.g. v1-0-0-abc1234 → revision name: myapi--v1-0-0-abc1234
+      # Dots are replaced with hyphens as ACA suffixes are alphanumeric + hyphens only.
+      # Falls back to sha-<7char> when no version is supplied (manual dispatch).
       - name: Deploy green revision (0% traffic)
         id: deploy-green
         run: |
           SHA="${{ inputs.image_sha }}"
+          VERSION="${{ inputs.version }}"
           SHORT_SHA=${SHA:0:7}
-          REVISION_SUFFIX=green-$SHORT_SHA
+
+          if [ -n "$VERSION" ]; then
+            ACA_VERSION="v${VERSION//./'-'}"
+            REVISION_SUFFIX="${ACA_VERSION}-${SHORT_SHA}"
+          else
+            REVISION_SUFFIX="sha-${SHORT_SHA}"
+          fi
+
+          echo "Revision suffix: $REVISION_SUFFIX"
 
           az containerapp update \
             --name ${{ env.APP_NAME }} \

@@ -1,0 +1,108 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# rollback.yml  –  Manual Rollback: Restore a Previous ACA Revision
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Emergency manual workflow to restore a previous Azure Container Apps
+#   revision to 100% traffic. Use this when a bad deploy is detected after
+#   promotion and the automatic rollback in development-CD.yml did not fire
+#   (i.e. the deploy pipeline completed successfully but the release is bad).
+#
+# How to use:
+#   1. Go to Actions → Rollback ACA Revision → Run workflow
+#   2. Leave "revision" blank to list available revisions first, then re-run
+#      with the target revision name filled in.
+#      OR supply the revision name directly if you already know it:
+#        myapi--v1-0-0-abc1234
+#
+# What it does:
+#   1. Lists all active revisions (so you can verify the target)
+#   2. Reactivates the target revision if it was deactivated
+#   3. Shifts 100% of ingress traffic to that revision
+#   4. Confirms the final state
+#
+# Concurrency:
+#   Shares the same concurrency group as development-CD.yml (deploy-development)
+#   to prevent a rollback and a deploy running simultaneously and corrupting
+#   revision traffic weights.
+#
+# Required GitHub environment secrets (environment: development):
+#   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
+#   AZURE_TENANT_ID       – Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: Rollback ACA Revision
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Revision name to roll back to (e.g. myapi--v1-0-0-abc1234). Leave blank to list available revisions only."
+        required: false
+        type: string
+
+# Shares the CD concurrency group so a rollback and a deploy can never run
+# simultaneously and corrupt revision traffic weights.
+concurrency:
+  group: deploy-development
+  cancel-in-progress: false
+
+env:
+  RG:       rg-myapi-dev
+  APP_NAME: myapi
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # OIDC only — no checkout required
+    environment: development
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Always list revisions first so the run log shows available targets.
+      # Useful when the operator is unsure of the exact revision name.
+      - name: List available revisions
+        run: |
+          echo "=== Active revisions ==="
+          az containerapp revision list \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --query "sort_by([?properties.active], &properties.createdTime)[].{revision:name, traffic:properties.trafficWeight, state:properties.runningState, created:properties.createdTime}" \
+            --output table
+
+      - name: Validate revision input
+        if: inputs.revision == ''
+        run: |
+          echo "No revision specified — review the list above and re-run with the target revision name."
+          exit 1
+
+      - name: Activate target revision
+        run: |
+          az containerapp revision activate \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --revision "${{ inputs.revision }}"
+
+      - name: Restore 100% traffic to target revision
+        run: |
+          az containerapp ingress traffic set \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --revision-weight "${{ inputs.revision }}"=100
+
+      - name: Confirm rollback state
+        run: |
+          echo "=== Revision state after rollback ==="
+          az containerapp revision list \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --query "sort_by([?properties.active], &properties.createdTime)[].{revision:name, traffic:properties.trafficWeight, state:properties.runningState}" \
+            --output table
