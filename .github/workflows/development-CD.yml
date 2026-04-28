@@ -1,4 +1,46 @@
-name: development CD — Blue/Green Deploy to ACA
+# ══════════════════════════════════════════════════════════════════════════════
+# development-CD.yml  –  Continuous Deployment: Blue/Green Deploy to ACA
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Deploys a new container image to Azure Container Apps using a blue/green
+#   strategy. The incoming revision receives zero traffic until smoke tests
+#   pass, eliminating downtime and allowing safe automated rollback.
+#
+# Triggers:
+#   • workflow_call  – called automatically by development-CI.yml after a
+#                      successful image push (passes image_sha as input)
+#   • workflow_dispatch  – manual deployment of any specific image SHA;
+#                          useful for re-deploying a previous known-good build
+#
+# Blue/Green deployment sequence:
+#   1. Deploy new (green) revision at 0% traffic
+#   2. Poll until the revision reaches Running state  (max ~200 s)
+#   3. Retrieve the revision-specific FQDN and run smoke tests
+#   4. Shift 100% of ingress traffic to the green revision
+#   5. Deactivate old revisions (keeping the most recent one for rollback)
+#   6. [On failure] Deactivate the green revision to revert to prior state
+#
+# Rollback:
+#   Automatic — if any step fails before traffic promotion, the green revision
+#   is deactivated and all traffic remains on the previous revision.
+#   For manual rollback after promotion, reactivate the retained old revision
+#   via the Azure portal or:
+#     az containerapp ingress traffic set \
+#       --name myapi --resource-group rg-myapi-dev \
+#       --revision-weight <old-revision-name>=100
+#
+# Concurrency:
+#   Only one deploy may run at a time (cancel-in-progress: false queues rather
+#   than cancels). This prevents concurrent deploys corrupting revision state.
+#
+# Required GitHub environment secrets (environment: development):
+#   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
+#   AZURE_TENANT_ID       – Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: development CD - Blue/Green Deploy to ACA
 
 on:
   workflow_call:
@@ -13,22 +55,25 @@ on:
         required: true
         type: string
 
+# Prevents concurrent deploys which could leave revision traffic weights in an
+# inconsistent state. Queues rather than cancels so no deploy is silently lost.
+concurrency:
+  group: deploy-development
+  cancel-in-progress: false
+
 env:
-  RG:       rg-myapi-dev # Container App Resource Group
-  APP_NAME: myapi # Container App name and ACR image name
-  ACR_NAME: acrimagereg # Container Registry Name
+  RG:       rg-myapi-dev  # Container App resource group
+  APP_NAME: myapi         # Container App name and ACR image name
+  ACR_NAME: acrimagereg   # Azure Container Registry name
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
-      contents: read
+      id-token: write   # required for OIDC — no repo checkout needed
     environment: development
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -36,13 +81,14 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ──────────────────────────────────────────────
-      # 1. Deploy GREEN revision at 0% traffic
-      # ──────────────────────────────────────────────
+      # ── Step 1: Deploy GREEN revision at 0% traffic ───────────────────────
+      # Creates a new Container App revision with the target image but no
+      # ingress traffic. The revision name is deterministic from the SHA so
+      # concurrent calls with the same SHA are idempotent.
       - name: Deploy green revision (0% traffic)
         id: deploy-green
         run: |
-          SHA=${{ inputs.image_sha }}
+          SHA="${{ inputs.image_sha }}"
           SHORT_SHA=${SHA:0:7}
           REVISION_SUFFIX=green-$SHORT_SHA
 
@@ -56,9 +102,9 @@ jobs:
           echo "revision=${{ env.APP_NAME }}--$REVISION_SUFFIX" >> $GITHUB_OUTPUT
           echo "suffix=$REVISION_SUFFIX" >> $GITHUB_OUTPUT
 
-      # ──────────────────────────────────────────────
-      # 2. Wait for green revision to be running
-      # ──────────────────────────────────────────────
+      # ── Step 2: Wait for green revision to reach Running state ────────────
+      # ACA provisions replicas asynchronously; polling is required before the
+      # revision FQDN is reachable. Max wait: 20 × 10 s = 200 s.
       - name: Wait for green revision to be running
         run: |
           for i in {1..20}; do
@@ -76,9 +122,9 @@ jobs:
             exit 1
           fi
 
-      # ──────────────────────────────────────────────
-      # 3. Smoke test via revision URL (zero prod traffic)
-      # ──────────────────────────────────────────────
+      # ── Step 3: Smoke test via per-revision URL (zero production traffic) ─
+      # Each ACA revision exposes its own FQDN, allowing testing without
+      # routing any real traffic to the new revision.
       - name: Get green revision URL
         id: revision-url
         run: |
@@ -93,12 +139,12 @@ jobs:
         run: |
           curl --fail --retry 6 --retry-delay 10 \
             ${{ steps.revision-url.outputs.url }}/health/ready
-          curl --fail \
+          curl --fail --retry 6 --retry-delay 10 \
             ${{ steps.revision-url.outputs.url }}/version
 
-      # ──────────────────────────────────────────────
-      # 4. Shift traffic: 100% → green
-      # ──────────────────────────────────────────────
+      # ── Step 4: Promote green to 100% traffic ────────────────────────────
+      # Atomically shifts all ingress to the new revision. The previous
+      # revision is untouched at this point and still active for rollback.
       - name: Promote green to 100% traffic
         run: |
           az containerapp ingress traffic set \
@@ -107,13 +153,16 @@ jobs:
             --revision-weight \
               ${{ steps.deploy-green.outputs.revision }}=100
 
-      # ──────────────────────────────────────────────
-      # 5. Deactivate old revisions (keep 1 for rollback)
-      # ──────────────────────────────────────────────
+      # ── Step 5: Deactivate old revisions (keep 1 for rollback) ───────────
+      # Sorts active old revisions oldest-first, then deactivates all except
+      # the most recent (which is retained as a rollback target).
+      # `head -n -1` drops the last line, preserving the newest old revision.
+      # continue-on-error: true — this is post-promotion housekeeping. A failure
+      # here must NOT trigger the rollback step, which would deactivate the
+      # green revision that is now live at 100% traffic.
       - name: Deactivate old revisions
+        continue-on-error: true
         run: |
-          # All active revisions except the green one, sorted oldest-first.
-          # tail -n +2 skips the most recent old revision (rollback target).
           OLD_REVISIONS=$(az containerapp revision list \
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RG }} \
@@ -127,3 +176,16 @@ jobs:
               --resource-group ${{ env.RG }} \
               --revision "$rev"
           done
+
+      # ── Step 6: Rollback on failure ───────────────────────────────────────
+      # Runs only if a prior step failed AND the green revision was created.
+      # Step 5 uses continue-on-error so a housekeeping failure after a
+      # successful promotion does not trigger this rollback and take down the
+      # live revision. This step only fires for failures in steps 1–4.
+      - name: Rollback green revision on failure
+        if: failure() && steps.deploy-green.outputs.revision != ''
+        run: |
+          az containerapp revision deactivate \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RG }} \
+            --revision "${{ steps.deploy-green.outputs.revision }}"

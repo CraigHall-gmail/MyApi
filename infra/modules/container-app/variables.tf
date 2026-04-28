@@ -1,28 +1,21 @@
-variable "resource_group" {
+variable "app_name" {
   type        = string
-  description = "Name of the Azure resource group"
+  description = "Name of the Container App"
+}
+
+variable "resource_group_name" {
+  type        = string
+  description = "Name of the resource group to deploy into"
 }
 
 variable "location" {
   type        = string
   description = "Azure region"
-  default     = "southafricanorth"
 }
 
-variable "aca_name_env" {
+variable "aca_env_id" {
   type        = string
-  description = "Name of the Azure Container App Environment"
-}
-
-variable "law_name_env" {
-  type        = string
-  description = "Name of the Log Analytics Workspace"
-}
-
-variable "tags" {
-  type        = map(string)
-  description = "Resource tags"
-  default     = {}
+  description = "Resource ID of the Container App Environment"
 }
 
 variable "acr_name" {
@@ -35,9 +28,10 @@ variable "acr_resource_group" {
   description = "Resource group containing the ACR"
 }
 
-variable "app_name" {
-  type        = string
-  description = "Name of the Container App"
+variable "tags" {
+  type        = map(string)
+  description = "Resource tags"
+  default     = {}
 }
 
 variable "cpu" {
@@ -50,6 +44,12 @@ variable "memory" {
   type        = string
   description = "Memory allocation for the container (e.g. '1Gi')"
   default     = "1Gi"
+}
+
+variable "port" {
+  type        = number
+  description = "Port the container listens on"
+  default     = 8080
 }
 
 variable "min_replicas" {
