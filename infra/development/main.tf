@@ -25,114 +25,65 @@ provider "azurerm" {
 data "azurerm_client_config" "current" {}
 
 import {
-  to = azurerm_container_app.api
+  to = module.api_app.azurerm_container_app.api
   id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group}/providers/Microsoft.App/containerApps/${var.app_name}"
 }
 
-# ── Resource Group ─────────────────────────────────────────────────────────────
-resource "azurerm_resource_group" "this" {
-  name     = var.resource_group
-  location = var.location
-  tags     = var.tags
+# ── State migrations: flat layout → modules ────────────────────────────────────
+moved {
+  from = azurerm_resource_group.this
+  to   = module.environment.azurerm_resource_group.this
 }
 
-# ── Log Analytics Workspace ────────────────────────────────────────────────────
-resource "azurerm_log_analytics_workspace" "this" {
-  name                = var.law_name_env
-  resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
-  sku                 = "PerGB2018"
-  retention_in_days   = 30
+moved {
+  from = azurerm_log_analytics_workspace.this
+  to   = module.environment.azurerm_log_analytics_workspace.this
+}
+
+moved {
+  from = azurerm_container_app_environment.this
+  to   = module.environment.azurerm_container_app_environment.this
+}
+
+moved {
+  from = azurerm_user_assigned_identity.api
+  to   = module.api_app.azurerm_user_assigned_identity.api
+}
+
+moved {
+  from = azurerm_role_assignment.acr_pull
+  to   = module.api_app.azurerm_role_assignment.acr_pull
+}
+
+moved {
+  from = azurerm_container_app.api
+  to   = module.api_app.azurerm_container_app.api
+}
+
+# ── Modules ────────────────────────────────────────────────────────────────────
+module "environment" {
+  source = "../modules/app-environment"
+
+  resource_group = var.resource_group
+  location       = var.location
+  law_name       = var.law_name_env
+  aca_env_name   = var.aca_name_env
+  tags           = var.tags
+}
+
+module "api_app" {
+  source = "../modules/container-app"
+
+  app_name            = var.app_name
+  resource_group_name = module.environment.resource_group_name
+  location            = module.environment.location
+  aca_env_id          = module.environment.aca_env_id
+  acr_name            = var.acr_name
+  acr_resource_group  = var.acr_resource_group
   tags                = var.tags
-}
 
-# ── ACA Environment ────────────────────────────────────────────────────────────
-resource "azurerm_container_app_environment" "this" {
-  name                       = var.aca_name_env
-  resource_group_name        = azurerm_resource_group.this.name
-  location                   = azurerm_resource_group.this.location
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
-  tags                       = var.tags
-}
-
-# ── Container Registry (existing, may live in a shared RG) ────────────────────
-data "azurerm_container_registry" "this" {
-  name                = var.acr_name
-  resource_group_name = var.acr_resource_group
-}
-
-# ── User-assigned identity — created before the app so AcrPull can be
-#    assigned before the container app tries to pull its first image.
-resource "azurerm_user_assigned_identity" "api" {
-  name                = "id-${var.app_name}"
-  resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
-  tags                = var.tags
-}
-
-# ── AcrPull role — must exist before the container app is created ─────────────
-resource "azurerm_role_assignment" "acr_pull" {
-  scope                = data.azurerm_container_registry.this.id
-  role_definition_name = "AcrPull"
-  principal_id         = azurerm_user_assigned_identity.api.principal_id
-}
-
-# ── Container App ──────────────────────────────────────────────────────────────
-resource "azurerm_container_app" "api" {
-  name                         = var.app_name
-  resource_group_name          = azurerm_resource_group.this.name
-  container_app_environment_id = azurerm_container_app_environment.this.id
-  revision_mode                = "Multiple"
-
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.api.id]
-  }
-
-  registry {
-    server   = data.azurerm_container_registry.this.login_server
-    identity = azurerm_user_assigned_identity.api.id
-  }
-
-  template {
-    container {
-      # Placeholder for initial provisioning — CD workflow deploys the real image.
-      name   = var.app_name
-      image  = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
-      cpu    = 0.5
-      memory = "1Gi"
-
-      env {
-        name  = "PORT"
-        value = "8080"
-      }
-    }
-    min_replicas = 1
-    max_replicas = 10
-  }
-
-  ingress {
-    external_enabled = true
-    target_port      = 8080
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
-    }
-  }
-
-  tags = var.tags
-
-  depends_on = [azurerm_role_assignment.acr_pull]
-
-  lifecycle {
-    ignore_changes = [
-      template[0].container[0].image, # CD pipeline owns the image
-    ]
-  }
-
-  timeouts {
-    create = "15m"
-    update = "15m"
-    delete = "15m"
-  }
+  cpu          = var.cpu
+  memory       = var.memory
+  min_replicas = var.min_replicas
+  max_replicas = var.max_replicas
 }

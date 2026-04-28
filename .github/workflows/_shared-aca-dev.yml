@@ -1,3 +1,43 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# _shared-aca-dev.yml  –  Shared Reusable Workflow: Terraform Plan & Apply
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Reusable workflow (workflow_call only) that executes the full Terraform
+#   lifecycle — init, format check, validate, plan, optional PR comment, and
+#   conditional apply. Designed to be called by environment-specific callers
+#   (e.g. development-Platform-Terraform.yml) that supply state config and
+#   credentials as inputs/secrets.
+#
+# Callers:
+#   development-Platform-Terraform.yml  →  environment: development
+#
+# Inputs:
+#   environment             (required) GitHub environment name; gates approvals
+#   working_directory       (optional) Path to Terraform root  [infra/development]
+#   tf_version              (optional) Terraform CLI version to install  [1.8.0]
+#   destroy                 (optional) Run terraform destroy instead of apply
+#   tf_state_storage_account (required) Azure Storage account for remote state
+#   tf_state_container      (required) Blob container name
+#   tf_state_key            (required) Blob path/key for the state file
+#
+# Secrets (passed from caller):
+#   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+#   Used for both `az login` (OIDC) and the azurerm provider (ARM_* env vars).
+#
+# Apply conditions:
+#   Apply only runs when:
+#     1. The event is a push to the development branch (not a PR)
+#     2. Terraform plan exit code is 2 (changes detected)
+#   This prevents apply on PRs and avoids a no-op apply when nothing changed.
+#
+# State locking:
+#   Azure Blob Storage uses lease-based locking. If a previous run crashed
+#   mid-apply, the lock blob may remain held. The "Break orphaned state lock"
+#   step releases it pre-emptively. The caller's concurrency group reduces the
+#   chance of a live run being interrupted by this.
+# ══════════════════════════════════════════════════════════════════════════════
+
 name: Shared – Deploy Platform (Terraform)
 
 on:
@@ -38,7 +78,7 @@ on:
 permissions:
   id-token: write
   contents: read
-  pull-requests: write    # allows the plan to comment on PRs
+  pull-requests: write    # allows the plan step to comment on PRs
 
 jobs:
   terraform:
@@ -50,7 +90,7 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
 
     env:
-      # azurerm provider picks these up automatically
+      # azurerm provider authenticates via these env vars + OIDC automatically.
       ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -67,6 +107,8 @@ jobs:
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # Breaks a stale lease left by a crashed apply. continue-on-error because
+      # the command fails with a 409 if no lease is held, which is the normal case.
       - name: Break orphaned state lock (if held)
         continue-on-error: true
         run: |
@@ -80,17 +122,26 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ inputs.tf_version }}
-            
+
+      # Backend config is supplied at runtime so this workflow is environment-
+      # agnostic. No backend.tf file with hardcoded values is required.
       - name: Terraform Init
-        run: terraform init
-          
+        run: |
+          terraform init \
+            -backend-config="storage_account_name=${{ inputs.tf_state_storage_account }}" \
+            -backend-config="container_name=${{ inputs.tf_state_container }}" \
+            -backend-config="key=${{ inputs.tf_state_key }}" \
+            -backend-config="use_oidc=true"
+
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
-        continue-on-error: false
 
       - name: Terraform Validate
         run: terraform validate
 
+      # -detailed-exitcode returns: 0 = no changes, 1 = error, 2 = changes.
+      # continue-on-error captures exit code 2 without failing the job here;
+      # "Fail on Plan Error" below converts exit code 1 into an actual failure.
       - name: Terraform Plan
         id: plan
         run: |
@@ -100,17 +151,24 @@ jobs:
             -detailed-exitcode \
             -lock-timeout=5m \
             ${{ inputs.destroy && '-destroy' || '' }}
-        # exit 0 = no changes, 1 = error, 2 = changes pending
         continue-on-error: true
 
+      # Posts the plan as a PR comment so reviewers can inspect changes before
+      # approving the merge. Output is capped at 60 000 chars to stay within
+      # GitHub's comment size limit; full output is always in the workflow logs.
       - name: Post Plan to PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
+            const MAX = 60000;
+            let plan = `${{ steps.plan.outputs.stdout }}`;
+            if (plan.length > MAX) {
+              plan = plan.slice(0, MAX) + '\n\n…output truncated (see workflow logs for full plan)';
+            }
             const output = `### Terraform Plan – \`${{ inputs.environment }}\`
             \`\`\`
-            ${{ steps.plan.outputs.stdout }}
+            ${plan}
             \`\`\`
             *Triggered by @${{ github.actor }}*`;
             github.rest.issues.createComment({
@@ -121,9 +179,14 @@ jobs:
             });
 
       - name: Fail on Plan Error
-        if: steps.plan.outcome == 'failure'
+        # outcome is 'failure' for both exit code 1 (error) and exit code 2 (changes).
+        # Only exit code 1 is a true error; exit code 2 means changes are pending and
+        # is handled by the Apply step below.
+        if: steps.plan.outputs.exitcode == '1'
         run: exit 1
 
+      # Apply only on branch push (not PRs) and only when plan detected changes.
+      # Exit code 2 from -detailed-exitcode means "success with changes".
       - name: Terraform Apply
         if: |
           github.ref == 'refs/heads/development' &&
