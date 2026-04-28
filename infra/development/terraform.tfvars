@@ -9,7 +9,7 @@ app_name           = "myapi"
 
 cpu          = 0.5
 memory       = "1Gi"
-min_replicas = 1
+min_replicas = 2
 max_replicas = 5
 
 tags = {
