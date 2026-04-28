@@ -1,3 +1,35 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# development-CI.yml  –  Continuous Integration: Build & Push to ACR
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Validates every push/PR to the development branch and, on a successful
+#   merge, builds the Docker image via ACR Tasks and hands off to the CD
+#   workflow for blue/green deployment.
+#
+# Triggers:
+#   • push → development  (excluding infra/** — Terraform has its own pipeline)
+#   • pull_request → development  (runs test job only; image is NOT pushed)
+#   • workflow_dispatch  (manual run; only test + build-push on development)
+#
+# Job flow:
+#   test ──► build-push ──► deploy  (calls development-CD.yml)
+#              ▲ skipped on PRs
+#
+# Required GitHub environment secrets (environment: development):
+#   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
+#   AZURE_TENANT_ID       – Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
+#
+# OIDC federated identity must be configured on the App Registration for:
+#   subject: repo:<org>/<repo>:environment:development
+#
+# Image naming convention:
+#   <ACR_NAME>.azurecr.io/<IMAGE_NAME>:<full-git-sha>
+#   The `latest` tag is intentionally NOT pushed — all deployments reference
+#   an immutable SHA tag to guarantee traceability and safe rollbacks.
+# ══════════════════════════════════════════════════════════════════════════════
+
 name: development CI - Build & Push to ACR
 
 on:
@@ -19,7 +51,8 @@ env:
   IMAGE_NAME: myapi
 
 jobs:
-  # ── Job 1: Test ──────────────────────────────
+  # ── Job 1: Test ──────────────────────────────────────────────────────────────
+  # Runs on every push and PR. Gate that must pass before any image is built.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -30,6 +63,14 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          # Cache key includes all .csproj files — any project change busts the cache.
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
       - name: Restore
         run: dotnet restore
 
@@ -38,16 +79,26 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build -c Release --logger trx
-        continue-on-error: false
 
-  # ── Job 2: Build & Push ──────────────────────
+      - name: Publish test results
+        # Always upload so failures are visible in the GitHub Actions UI.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/*.trx'
+
+  # ── Job 2: Build & Push ──────────────────────────────────────────────────────
+  # Only runs when code is merged to development (not on pull requests).
+  # Uses `az acr build` which runs the Docker build inside Azure — no Docker
+  # daemon needed on the runner and the image never leaves Azure's network.
   build-push:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/development'  # only on branch push, not PRs
+    if: github.ref == 'refs/heads/development'  # skip on PRs
     environment: development
     permissions:
-      id-token: write      # required for OIDC
+      id-token: write      # required for OIDC token exchange
       contents: read
     outputs:
       image-tag: ${{ steps.meta.outputs.tag }}
@@ -65,7 +116,7 @@ jobs:
       - name: Set image tag
         id: meta
         run: |
-          TAG=${{ github.sha }}
+          TAG="${{ github.sha }}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "Image tag: $TAG"
 
@@ -74,20 +125,20 @@ jobs:
           az acr build \
             --registry ${{ env.ACR_NAME }} \
             --image ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }} \
-            --image ${{ env.IMAGE_NAME }}:latest \
             .
 
       - name: Output image reference
         run: |
           echo "Pushed: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
 
-  # ── Job 3: Deploy ────────────────────────────
+  # ── Job 3: Deploy ────────────────────────────────────────────────────────────
+  # Calls the CD workflow as a reusable workflow, passing the image SHA.
+  # Runs only on development branch merges, after a successful build-push.
   deploy:
     needs: build-push
     if: github.ref == 'refs/heads/development'
     permissions:
-      id-token: write
-      contents: read
+      id-token: write   # CD workflow only needs OIDC; no checkout required
     uses: ./.github/workflows/development-CD.yml
     with:
       image_sha: ${{ needs.build-push.outputs.image-tag }}

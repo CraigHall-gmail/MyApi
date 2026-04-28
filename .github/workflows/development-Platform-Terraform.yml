@@ -1,0 +1,88 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# development-Platform-Terraform.yml  –  Platform Provisioning (Terraform)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Provisions and manages all Azure infrastructure for the development
+#   environment using Terraform. Delegates execution to the shared reusable
+#   workflow (_shared-aca-dev.yml) which handles init, plan, and apply.
+#
+# Triggers:
+#   • push → development  (only when files under infra/development/** change)
+#   • pull_request → development  (plan only — no apply; posts plan to PR)
+#   • workflow_dispatch  (manual run; supports optional destroy flag)
+#
+# Separation from CI/CD:
+#   The CI workflow excludes infra/** via paths-ignore, and this workflow
+#   targets infra/development/** via paths. The two pipelines never overlap.
+#
+# Concurrency:
+#   One Terraform run per git ref at a time. cancel-in-progress: false queues
+#   rather than cancels to prevent state corruption from partially applied plans.
+#
+# Terraform state:
+#   Stored in Azure Blob Storage:
+#     Storage account : myapiterraformstate
+#     Container       : tfstate
+#     Blob key        : development/api.tfstate
+#   OIDC authentication is used — no storage account keys are stored as secrets.
+#
+# Plan vs Apply:
+#   • pull_request  → plan output posted as a PR comment; no apply
+#   • push/dispatch → plan + auto-approve apply (only if changes detected)
+#
+# Required GitHub environment secrets (environment: development):
+#   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
+#   AZURE_TENANT_ID       – Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
+#
+# Destroy:
+#   Set the `destroy` input to true via workflow_dispatch to run
+#   `terraform destroy`. This is intentionally not automated — it requires
+#   an explicit manual trigger to prevent accidental infrastructure deletion.
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: development - Platform Terraform Provision
+
+on:
+  push:
+    branches: [development]
+    paths:
+      - 'infra/development/**'
+  pull_request:
+    branches: [development]
+    paths:
+      - 'infra/development/**'
+
+  workflow_dispatch:
+    inputs:
+      destroy:
+        description: "Destroy resources?"
+        type: boolean
+        default: false
+
+# Serialises Terraform runs per ref to prevent concurrent state modifications.
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write        # OIDC token for Azure login
+  contents: read
+  pull-requests: write   # post plan output as PR comment
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_shared-aca-dev.yml
+    with:
+      environment:               development
+      working_directory:         infra/development
+      tf_version:                "1.8.0"
+      destroy:                   ${{ inputs.destroy || false }}
+      tf_state_storage_account:  myapiterraformstate
+      tf_state_container:        tfstate
+      tf_state_key:              development/api.tfstate
+    secrets:
+      AZURE_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
