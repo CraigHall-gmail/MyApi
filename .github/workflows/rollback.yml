@@ -32,7 +32,7 @@
 #   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Rollback ACA Revision
+name: Rollback API Revision
 
 on:
   workflow_dispatch:
@@ -84,12 +84,16 @@ jobs:
           echo "No revision specified — review the list above and re-run with the target revision name."
           exit 1
 
-      - name: Activate target revision
+      - name: Activate target revision (if deactivated)
+        # ACA revisions remain active unless explicitly deactivated — the activate
+        # command is only needed for revisions that were fully deactivated by the
+        # CD cleanup step. The || true makes this a no-op when the revision is
+        # already active. The traffic set step below is the real guard.
         run: |
           az containerapp revision activate \
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RG }} \
-            --revision "${{ inputs.revision }}"
+            --revision "${{ inputs.revision }}" || true
 
       - name: Restore 100% traffic to target revision
         run: |
