@@ -95,27 +95,12 @@ The CD workflow uses Azure Container Apps' built-in revision model to implement 
 
 ### Manual Rollback
 
-Use the dedicated **[`rollback.yml`](rollback.yml)** workflow:
+Use the dedicated **[`rollback.yml`](rollback.yml)** workflow — no inputs required:
 
 1. Go to **Actions → Rollback ACA Revision → Run workflow**
-2. Leave the revision field **blank** on the first run — the workflow will list all active revisions and exit, so you can see the available names in the run log
-3. Re-run supplying the target revision name (e.g. `myapi--v1-0-0-abc1234`)
+2. Click **Run workflow** — no revision name needed
 
-The rollback workflow shares the same concurrency group as the CD workflow (`deploy-development`) so a rollback and a deploy can never run simultaneously.
-
-If you prefer the CLI directly:
-
-```bash
-# List active revisions
-az containerapp revision list \
-  --name myapi --resource-group rg-myapi-dev \
-  --query "sort_by([?properties.active], &properties.createdTime)[].{revision:name, traffic:properties.trafficWeight}" \
-  --output table
-
-# Restore traffic to a previous revision
-az containerapp revision activate --name myapi --resource-group rg-myapi-dev --revision <name>
-az containerapp ingress traffic set --name myapi --resource-group rg-myapi-dev --revision-weight <name>=100
-```
+The workflow automatically identifies the live revision and the most recently created active revision before it, shifts traffic, deactivates the bad revision, and enforces a maximum of 2 active revisions. It shares the `deploy-development` concurrency group with the CD workflow so a rollback and a deploy can never run simultaneously.
 
 ---
 
