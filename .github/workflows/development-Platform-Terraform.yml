@@ -42,7 +42,7 @@
 #   an explicit manual trigger to prevent accidental infrastructure deletion.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: development - Platform Terraform Provision
+name: development - Azure Terraform Provision
 
 on:
   push:
