@@ -22,8 +22,8 @@
 #   6. [On failure] Deactivate the green revision to revert to prior state
 #
 # Revision naming:
-#   With version : myapi--{major}-{minor}-{patch}-{7-char-sha}
-#                  e.g.  myapi--1-0-0-abc1234
+#   With version : myapi--v{major}-{minor}-{patch}-{7-char-sha}
+#                  e.g.  myapi--v1-0-0-abc1234
 #   Without version (manual dispatch, no version supplied):
 #                  myapi--sha-{7-char-sha}
 #                  e.g.  myapi--sha-abc1234
@@ -110,7 +110,7 @@ jobs:
           SHORT_SHA=${SHA:0:7}
 
           if [ -n "$VERSION" ]; then
-            REVISION_SUFFIX="${VERSION//./'-'}-${SHORT_SHA}"
+            REVISION_SUFFIX="v${VERSION//./'-'}-${SHORT_SHA}"
           else
             REVISION_SUFFIX="sha-${SHORT_SHA}"
           fi
