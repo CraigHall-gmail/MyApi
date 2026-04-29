@@ -12,6 +12,7 @@ This directory contains all CI/CD and platform provisioning workflows for the **
 | [`development-CD.yml`](development-CD.yml) | Blue/green deploy to ACA | CI workflow or manual dispatch |
 | [`rollback.yml`](rollback.yml) | Manually restore a previous ACA revision | Manual dispatch only |
 | [`development-Platform-Terraform.yml`](development-Platform-Terraform.yml) | Provision Azure infrastructure | `infra/development/**` changes or manual |
+| [`development-Platform-Drift.yml`](development-Platform-Drift.yml) | Nightly infrastructure drift check | Scheduled 01:00 UTC / manual |
 | [`_shared-aca-dev.yml`](_shared-aca-dev.yml) | Reusable Terraform plan + apply | Called by Terraform workflow |
 
 ---
