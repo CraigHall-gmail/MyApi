@@ -170,8 +170,8 @@ Follow standard semver rules:
 |---|---|---|
 | ACR image (immutable) | `myapi:<full-sha>` | `myapi:abc123...` |
 | ACR image (version pointer) | `myapi:<version>` | `myapi:1.2.0` |
-| ACA revision suffix | `v<version dots→hyphens>-<7-char-sha>` | `v1-2-0-abc1234` |
-| ACA revision name | `myapi--<suffix>` | `myapi--v1-2-0-abc1234` |
+| ACA revision suffix | `<version dots→hyphens>-<7-char-sha>` | `1-2-0-abc1234` |
+| ACA revision name | `myapi--<suffix>` | `myapi--1-2-0-abc1234` |
 
 The SHA tag is immutable and used for all deployments. The version tag is a mutable pointer updated on every push of that version — useful for identifying what's in ACR at a glance.
 
