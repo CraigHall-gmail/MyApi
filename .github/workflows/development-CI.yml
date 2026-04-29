@@ -34,7 +34,7 @@
 #   The version is read from <Version> in MyApi.csproj and must be bumped
 #   manually (following semver: MAJOR.MINOR.PATCH) before merging a release.
 #   This version drives both the ACR image tag and the ACA revision suffix,
-#   making deployed revisions identifiable as e.g. myapi--v1-0-0-abc1234.
+#   making deployed revisions identifiable as e.g. myapi--1-0-0-abc1234.
 # ══════════════════════════════════════════════════════════════════════════════
 
 name: development CI - Build & Push to ACR
