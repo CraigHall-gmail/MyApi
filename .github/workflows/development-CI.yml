@@ -25,9 +25,16 @@
 #   subject: repo:<org>/<repo>:environment:development
 #
 # Image naming convention:
-#   <ACR_NAME>.azurecr.io/<IMAGE_NAME>:<full-git-sha>
+#   <ACR_NAME>.azurecr.io/<IMAGE_NAME>:<full-git-sha>  – immutable, always pushed
+#   <ACR_NAME>.azurecr.io/<IMAGE_NAME>:<semver>         – mutable pointer to latest build of that version
 #   The `latest` tag is intentionally NOT pushed — all deployments reference
-#   an immutable SHA tag to guarantee traceability and safe rollbacks.
+#   the SHA tag to guarantee traceability and safe rollbacks.
+#
+# Semantic versioning:
+#   The version is read from <Version> in MyApi.csproj and must be bumped
+#   manually (following semver: MAJOR.MINOR.PATCH) before merging a release.
+#   This version drives both the ACR image tag and the ACA revision suffix,
+#   making deployed revisions identifiable as e.g. myapi--v1-0-0-abc1234.
 # ══════════════════════════════════════════════════════════════════════════════
 
 name: development CI - Build & Push to ACR
@@ -102,9 +109,21 @@ jobs:
       contents: read
     outputs:
       image-tag: ${{ steps.meta.outputs.tag }}
+      version:   ${{ steps.semver.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read semantic version from project
+        id: semver
+        run: |
+          VERSION=$(grep -oP '(?<=<Version>)[^<]+' MyApi.csproj | head -1)
+          if [ -z "$VERSION" ]; then
+            echo "::error::No <Version> element found in MyApi.csproj"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Semantic version: $VERSION"
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
@@ -125,15 +144,17 @@ jobs:
           az acr build \
             --registry ${{ env.ACR_NAME }} \
             --image ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }} \
+            --image ${{ env.IMAGE_NAME }}:${{ steps.semver.outputs.version }} \
             .
 
-      - name: Output image reference
+      - name: Output image references
         run: |
-          echo "Pushed: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
+          echo "SHA tag  : ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
+          echo "Semver tag: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.semver.outputs.version }}"
 
   # ── Job 3: Deploy ────────────────────────────────────────────────────────────
-  # Calls the CD workflow as a reusable workflow, passing the image SHA.
-  # Runs only on development branch merges, after a successful build-push.
+  # Calls the CD workflow as a reusable workflow, passing the image SHA and
+  # semantic version. Runs only on development branch merges.
   deploy:
     needs: build-push
     if: github.ref == 'refs/heads/development'
@@ -142,4 +163,5 @@ jobs:
     uses: ./.github/workflows/development-CD.yml
     with:
       image_sha: ${{ needs.build-push.outputs.image-tag }}
+      version:   ${{ needs.build-push.outputs.version }}
     secrets: inherit
