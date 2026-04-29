@@ -10,6 +10,7 @@ This directory contains all CI/CD and platform provisioning workflows for the **
 |---|---|---|
 | [`development-CI.yml`](development-CI.yml) | Build, test, push image to ACR | Push / PR to `development` |
 | [`development-CD.yml`](development-CD.yml) | Blue/green deploy to ACA | CI workflow or manual dispatch |
+| [`rollback.yml`](rollback.yml) | Manually restore a previous ACA revision | Manual dispatch only |
 | [`development-Platform-Terraform.yml`](development-Platform-Terraform.yml) | Provision Azure infrastructure | `infra/development/**` changes or manual |
 | [`_shared-aca-dev.yml`](_shared-aca-dev.yml) | Reusable Terraform plan + apply | Called by Terraform workflow |
 
@@ -94,21 +95,26 @@ The CD workflow uses Azure Container Apps' built-in revision model to implement 
 
 ### Manual Rollback
 
-If a bad deploy is detected after promotion, reactivate the retained old revision:
+Use the dedicated **[`rollback.yml`](rollback.yml)** workflow:
+
+1. Go to **Actions → Rollback ACA Revision → Run workflow**
+2. Leave the revision field **blank** on the first run — the workflow will list all active revisions and exit, so you can see the available names in the run log
+3. Re-run supplying the target revision name (e.g. `myapi--v1-0-0-abc1234`)
+
+The rollback workflow shares the same concurrency group as the CD workflow (`deploy-development`) so a rollback and a deploy can never run simultaneously.
+
+If you prefer the CLI directly:
 
 ```bash
 # List active revisions
 az containerapp revision list \
-  --name myapi \
-  --resource-group rg-myapi-dev \
-  --query "[?properties.active].{name:name, created:properties.createdTime, traffic:properties.trafficWeight}" \
+  --name myapi --resource-group rg-myapi-dev \
+  --query "sort_by([?properties.active], &properties.createdTime)[].{revision:name, traffic:properties.trafficWeight}" \
   --output table
 
-# Shift traffic back to the previous revision
-az containerapp ingress traffic set \
-  --name myapi \
-  --resource-group rg-myapi-dev \
-  --revision-weight <previous-revision-name>=100
+# Restore traffic to a previous revision
+az containerapp revision activate --name myapi --resource-group rg-myapi-dev --revision <name>
+az containerapp ingress traffic set --name myapi --resource-group rg-myapi-dev --revision-weight <name>=100
 ```
 
 ---
@@ -154,15 +160,52 @@ The App Registration must have a federated credential for each subject that requ
 
 ---
 
+## Semantic Versioning
+
+The version is defined in `MyApi.csproj` as `<Version>MAJOR.MINOR.PATCH</Version>` and is the single source of truth across images and revision names.
+
+### Bumping the version
+
+Edit `MyApi.csproj` before merging a release:
+
+```xml
+<Version>1.2.0</Version>
+```
+
+Follow standard semver rules:
+| Change type | Bump |
+|---|---|
+| Breaking API change | MAJOR (`2.0.0`) |
+| New feature, backwards-compatible | MINOR (`1.1.0`) |
+| Bug fix | PATCH (`1.0.1`) |
+
+### How it flows through the pipeline
+
+| Artifact | Format | Example |
+|---|---|---|
+| ACR image (immutable) | `myapi:<full-sha>` | `myapi:abc123...` |
+| ACR image (version pointer) | `myapi:<version>` | `myapi:1.2.0` |
+| ACA revision suffix | `v<version dots→hyphens>-<7-char-sha>` | `v1-2-0-abc1234` |
+| ACA revision name | `myapi--<suffix>` | `myapi--v1-2-0-abc1234` |
+
+The SHA tag is immutable and used for all deployments. The version tag is a mutable pointer updated on every push of that version — useful for identifying what's in ACR at a glance.
+
+### Manual dispatch without a version
+
+When triggering the CD workflow manually via `workflow_dispatch` without supplying a version, the revision suffix falls back to `sha-<7-char-sha>` (e.g. `myapi--sha-abc1234`).
+
+---
+
 ## Image Naming
 
-Images are tagged with the **full Git SHA** and pushed to ACR:
+Images are pushed to ACR with two tags per build:
 
 ```
-acrimagereg.azurecr.io/myapi:<full-40-char-git-sha>
+acrimagereg.azurecr.io/myapi:<full-40-char-git-sha>   ← immutable, used for deployment
+acrimagereg.azurecr.io/myapi:<semver>                  ← mutable pointer to latest build of that version
 ```
 
-The `latest` tag is intentionally not pushed. Every deployment references an immutable SHA tag, which guarantees:
+The `latest` tag is intentionally not pushed. All deployments reference the immutable SHA tag, which guarantees:
 - Full traceability from deployment back to commit
 - Safe rollbacks to any previous SHA
 - No ambiguity when multiple deploys occur in quick succession
