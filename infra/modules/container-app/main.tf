@@ -45,9 +45,41 @@ resource "azurerm_container_app" "api" {
         name  = "PORT"
         value = tostring(var.port)
       }
+
+      liveness_probe {
+        transport               = "HTTP"
+        path                    = var.liveness_probe_path
+        port                    = var.port
+        initial_delay           = 10
+        interval_seconds        = 30
+        failure_count_threshold = 3
+      }
+
+      readiness_probe {
+        transport               = "HTTP"
+        path                    = var.readiness_probe_path
+        port                    = var.port
+        interval_seconds        = 10
+        failure_count_threshold = 3
+        success_count_threshold = 1
+      }
+
+      startup_probe {
+        transport               = "HTTP"
+        path                    = var.startup_probe_path
+        port                    = var.port
+        interval_seconds        = 10
+        failure_count_threshold = 30
+      }
     }
+
     min_replicas = var.min_replicas
     max_replicas = var.max_replicas
+
+    http_scale_rule {
+      name                = "http-scale-rule"
+      concurrent_requests = var.http_scale_concurrent_requests
+    }
   }
 
   ingress {
@@ -66,6 +98,8 @@ resource "azurerm_container_app" "api" {
   lifecycle {
     ignore_changes = [
       template[0].container[0].image, # CD pipeline owns the image
+      template[0].container[0].env,   # CD pipeline sets REVISION_LABEL
+      ingress[0].traffic_weight,      # CD pipeline manages traffic routing
     ]
   }
 
