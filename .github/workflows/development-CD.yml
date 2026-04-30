@@ -48,7 +48,7 @@
 #   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: development CD - Blue/Green Deploy to Container
+name: Development CD - Blue/Green Deploy to Container
 
 on:
   workflow_call:
