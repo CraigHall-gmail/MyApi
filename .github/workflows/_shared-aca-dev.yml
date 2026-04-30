@@ -107,16 +107,16 @@ jobs:
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Breaks a stale lease left by a crashed apply. continue-on-error because
-      # the command fails with a 409 if no lease is held, which is the normal case.
+      # Breaks a stale lease left by a crashed apply.
+      # || true suppresses the expected error when no lease is held (the normal case),
+      # avoiding a red annotation on every clean run.
       - name: Break orphaned state lock (if held)
-        continue-on-error: true
         run: |
           az storage blob lease break \
             --account-name ${{ inputs.tf_state_storage_account }} \
             --container-name ${{ inputs.tf_state_container }} \
             --blob-name ${{ inputs.tf_state_key }} \
-            --auth-mode login
+            --auth-mode login 2>/dev/null || true
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
