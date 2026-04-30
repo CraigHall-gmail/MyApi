@@ -30,7 +30,7 @@
 #   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Rollback ACA Revision
+name: Rollback API Container Revision
 
 on:
   workflow_dispatch:
