@@ -63,3 +63,27 @@ variable "max_replicas" {
   description = "Maximum number of replicas"
   default     = 10
 }
+
+variable "liveness_probe_path" {
+  type        = string
+  description = "HTTP path for the liveness probe"
+  default     = "/health/live"
+}
+
+variable "readiness_probe_path" {
+  type        = string
+  description = "HTTP path for the readiness probe"
+  default     = "/health/ready"
+}
+
+variable "startup_probe_path" {
+  type        = string
+  description = "HTTP path for the startup probe"
+  default     = "/health/live"
+}
+
+variable "http_scale_concurrent_requests" {
+  type        = string
+  description = "Concurrent HTTP requests threshold that triggers a scale-out"
+  default     = "100"
+}
