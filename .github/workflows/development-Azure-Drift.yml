@@ -29,7 +29,7 @@
 #   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Nightly Azure Drift Check
+name: Scheduled - Azure Drift Check
 
 on:
   schedule:

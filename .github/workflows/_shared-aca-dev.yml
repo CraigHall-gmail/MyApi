@@ -38,7 +38,7 @@
 #   chance of a live run being interrupted by this.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Shared – Azure Terraform Apply
+name: Shared – Azure Terraform Plan/Apply
 
 on:
   workflow_call:

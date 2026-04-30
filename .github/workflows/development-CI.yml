@@ -37,7 +37,7 @@
 #   making deployed revisions identifiable as e.g. myapi--v1-0-0-abc1234.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: development CI - Build & Push to Registry
+name: Development CI - Build & Push to Registry
 
 on:
   push:
