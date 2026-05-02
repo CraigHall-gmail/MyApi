@@ -1,0 +1,194 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# _shared-cd.yml  –  Shared Reusable Workflow: Blue/Green Deploy to ACA
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Reusable workflow (workflow_call only) that executes a full blue/green
+#   deployment to Azure Container Apps. Callers supply the target environment,
+#   image SHA, and resource details. The GitHub Environment specified via
+#   `environment` input enforces any protection rules (e.g. required reviewers
+#   for production) automatically — no extra logic needed in this workflow.
+#
+# Callers:
+#   development-CI.yml     →  environment: development
+#   development-CD.yml     →  environment: development  (manual dispatch wrapper)
+#   main-CI.yml            →  environment: staging / production
+#
+# Blue/Green deployment sequence:
+#   1. Deploy new (green) revision at 0% traffic
+#   2. Poll until the revision reaches Running state  (max ~200 s)
+#   3. Retrieve the revision-specific FQDN and run smoke tests
+#   4. Shift 100% of ingress traffic to the green revision
+#   5. Deactivate old revisions (keeping the most recent one for rollback)
+#   6. [On failure] Deactivate the green revision to revert to prior state
+#
+# Inputs:
+#   environment    (required) GitHub environment name; gates approval rules
+#   image_sha      (required) Full image SHA to deploy
+#   version        (optional) Semantic version for the revision suffix
+#   app_name       (optional) Container App name              [myapi]
+#   resource_group (required) Resource group of the Container App
+#   acr_name       (optional) Azure Container Registry name   [acrimagereg]
+#
+# Secrets (passed from caller):
+#   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: Shared – Blue/Green Deploy to Container Apps
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: "GitHub environment name (development/staging/production)"
+      image_sha:
+        required: true
+        type: string
+        description: "Full image SHA to deploy"
+      version:
+        required: false
+        type: string
+        description: "Semantic version from MyApi.csproj (e.g. 1.0.0)"
+      app_name:
+        required: false
+        type: string
+        default: myapi
+        description: "Container App name"
+      resource_group:
+        required: true
+        type: string
+        description: "Resource group containing the Container App"
+      acr_name:
+        required: false
+        type: string
+        default: acrimagereg
+        description: "Azure Container Registry name"
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+
+permissions:
+  id-token: write   # OIDC only — no repo checkout required
+
+# One deploy per environment at a time. Queues rather than cancels to prevent
+# concurrent revisions corrupting traffic weights.
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Step 1: Deploy GREEN revision at 0% traffic ───────────────────────
+      - name: Deploy green revision (0% traffic)
+        id: deploy-green
+        run: |
+          SHA="${{ inputs.image_sha }}"
+          VERSION="${{ inputs.version }}"
+          SHORT_SHA=${SHA:0:7}
+
+          if [ -n "$VERSION" ]; then
+            REVISION_SUFFIX="v${VERSION//./'-'}-${SHORT_SHA}"
+          else
+            REVISION_SUFFIX="sha-${SHORT_SHA}"
+          fi
+
+          echo "Revision suffix: $REVISION_SUFFIX"
+
+          az containerapp update \
+            --name      "${{ inputs.app_name }}" \
+            --resource-group "${{ inputs.resource_group }}" \
+            --image     "${{ inputs.acr_name }}.azurecr.io/${{ inputs.app_name }}:${SHA}" \
+            --revision-suffix "$REVISION_SUFFIX" \
+            --set-env-vars "REVISION_LABEL=${REVISION_SUFFIX}"
+
+          echo "revision=${{ inputs.app_name }}--${REVISION_SUFFIX}" >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Wait for green revision to reach Running state ────────────
+      - name: Wait for green revision to be running
+        run: |
+          for i in {1..20}; do
+            STATUS=$(az containerapp revision show \
+              --name           "${{ inputs.app_name }}" \
+              --resource-group "${{ inputs.resource_group }}" \
+              --revision       "${{ steps.deploy-green.outputs.revision }}" \
+              --query properties.runningState -o tsv)
+            echo "Revision state: $STATUS"
+            [ "$STATUS" = "Running" ] && break
+            sleep 10
+          done
+          if [ "$STATUS" != "Running" ]; then
+            echo "Revision failed to reach Running state"
+            exit 1
+          fi
+
+      # ── Step 3: Smoke test via per-revision URL (zero production traffic) ─
+      - name: Get green revision URL
+        id: revision-url
+        run: |
+          FQDN=$(az containerapp revision show \
+            --name           "${{ inputs.app_name }}" \
+            --resource-group "${{ inputs.resource_group }}" \
+            --revision       "${{ steps.deploy-green.outputs.revision }}" \
+            --query properties.fqdn -o tsv)
+          echo "url=https://${FQDN}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test green revision
+        run: |
+          curl --fail --retry 6 --retry-delay 10 \
+            "${{ steps.revision-url.outputs.url }}/health/ready"
+          curl --fail --retry 6 --retry-delay 10 \
+            "${{ steps.revision-url.outputs.url }}/version"
+
+      # ── Step 4: Promote green to 100% traffic ────────────────────────────
+      - name: Promote green to 100% traffic
+        run: |
+          az containerapp ingress traffic set \
+            --name           "${{ inputs.app_name }}" \
+            --resource-group "${{ inputs.resource_group }}" \
+            --revision-weight "${{ steps.deploy-green.outputs.revision }}=100"
+
+      # ── Step 5: Deactivate old revisions (keep 1 for rollback) ───────────
+      # continue-on-error: post-promotion housekeeping must not roll back a live revision.
+      - name: Deactivate old revisions
+        continue-on-error: true
+        run: |
+          OLD_REVISIONS=$(az containerapp revision list \
+            --name           "${{ inputs.app_name }}" \
+            --resource-group "${{ inputs.resource_group }}" \
+            --query "sort_by([?properties.active && name != '${{ steps.deploy-green.outputs.revision }}'], &properties.createdTime)[].name" \
+            -o tsv | head -n -1)
+
+          for rev in $OLD_REVISIONS; do
+            echo "Deactivating: $rev"
+            az containerapp revision deactivate \
+              --name           "${{ inputs.app_name }}" \
+              --resource-group "${{ inputs.resource_group }}" \
+              --revision       "$rev"
+          done
+
+      # ── Step 6: Rollback on failure ───────────────────────────────────────
+      - name: Rollback green revision on failure
+        if: failure() && steps.deploy-green.outputs.revision != ''
+        run: |
+          az containerapp revision deactivate \
+            --name           "${{ inputs.app_name }}" \
+            --resource-group "${{ inputs.resource_group }}" \
+            --revision       "${{ steps.deploy-green.outputs.revision }}"

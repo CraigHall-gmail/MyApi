@@ -67,6 +67,11 @@ on:
       tf_state_key:
         required: true
         type: string
+      apply_branch:
+        required: false
+        type: string
+        default: development
+        description: "Branch on which terraform apply is permitted (push events only)"
     secrets:
       AZURE_CLIENT_ID:
         required: true
@@ -189,6 +194,6 @@ jobs:
       # Exit code 2 from -detailed-exitcode means "success with changes".
       - name: Terraform Apply
         if: |
-          github.ref == 'refs/heads/development' &&
+          github.ref == format('refs/heads/{0}', inputs.apply_branch) &&
           steps.plan.outputs.exitcode == '2'
         run: terraform apply -auto-approve tfplan

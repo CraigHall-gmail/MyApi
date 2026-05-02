@@ -1,54 +1,26 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# development-CD.yml  –  Continuous Deployment: Blue/Green Deploy to ACA
+# development-CD.yml  –  Development CD: Manual Blue/Green Deploy
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
-#   Deploys a new container image to Azure Container Apps using a blue/green
-#   strategy. The incoming revision receives zero traffic until smoke tests
-#   pass, eliminating downtime and allowing safe automated rollback.
+#   Manual dispatch wrapper for deploying to the development environment.
+#   Also acts as a workflow_call target so development-CI.yml can invoke the
+#   CD step without duplicating inputs.
+#
+#   All deployment logic lives in _shared-cd.yml. This file exists to:
+#     1. Expose a workflow_dispatch trigger for ad-hoc dev deployments
+#     2. Hard-code the development-specific resource group and environment
+#        so callers don't need to know infra details
 #
 # Triggers:
-#   • workflow_call  – called automatically by development-CI.yml after a
-#                      successful image push (passes image_sha and version)
-#   • workflow_dispatch  – manual deployment of any specific image SHA;
-#                          optionally accepts a version for the revision suffix
+#   • workflow_call  – called by development-CI.yml after a successful image push
+#   • workflow_dispatch  – manual deploy of any specific image SHA
 #
-# Blue/Green deployment sequence:
-#   1. Deploy new (green) revision at 0% traffic
-#   2. Poll until the revision reaches Running state  (max ~200 s)
-#   3. Retrieve the revision-specific FQDN and run smoke tests
-#   4. Shift 100% of ingress traffic to the green revision
-#   5. Deactivate old revisions (keeping the most recent one for rollback)
-#   6. [On failure] Deactivate the green revision to revert to prior state
-#
-# Revision naming:
-#   With version : myapi--v{major}-{minor}-{patch}-{7-char-sha}
-#                  e.g.  myapi--v1-0-0-abc1234
-#   Without version (manual dispatch, no version supplied):
-#                  myapi--sha-{7-char-sha}
-#                  e.g.  myapi--sha-abc1234
-#
-# Rollback:
-#   Automatic — if steps 1–4 fail, the green revision is deactivated and all
-#   traffic remains on the previous revision. Step 5 (cleanup) uses
-#   continue-on-error so a housekeeping failure after a successful promotion
-#   does not roll back a live revision.
-#   For manual rollback after promotion, reactivate the retained old revision:
-#     az containerapp ingress traffic set \
-#       --name myapi --resource-group rg-myapi-dev \
-#       --revision-weight <old-revision-name>=100
-#
-# Concurrency:
-#   Only one deploy may run at a time (cancel-in-progress: false queues rather
-#   than cancels). This prevents concurrent deploys corrupting revision state.
-#
-# Required GitHub environment secrets (environment: development):
-#   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
-#   AZURE_TENANT_ID       – Azure AD tenant ID
-#   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
+# For staging and production deployments, see main-CI.yml which calls
+# _shared-cd.yml directly with the appropriate environment inputs.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Development CD - Blue/Green Deploy to Container
+name: Development CD – Blue/Green Deploy
 
 on:
   workflow_call:
@@ -71,146 +43,15 @@ on:
         required: false
         type: string
 
-# Prevents concurrent deploys which could leave revision traffic weights in an
-# inconsistent state. Queues rather than cancels so no deploy is silently lost.
-concurrency:
-  group: deploy-development
-  cancel-in-progress: false
-
-env:
-  RG:       rg-myapi-dev  # Container App resource group
-  APP_NAME: myapi         # Container App name and ACR image name
-  ACR_NAME: acrimagereg   # Azure Container Registry name
+permissions:
+  id-token: write
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write   # required for OIDC — no repo checkout needed
-    environment: development
-
-    steps:
-      - name: Azure login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      # ── Step 1: Deploy GREEN revision at 0% traffic ───────────────────────
-      # Builds a deterministic revision suffix from the semantic version and
-      # short SHA, e.g. v1-0-0-abc1234 → revision name: myapi--v1-0-0-abc1234
-      # Dots are replaced with hyphens as ACA suffixes are alphanumeric + hyphens only.
-      # Falls back to sha-<7char> when no version is supplied (manual dispatch).
-      - name: Deploy green revision (0% traffic)
-        id: deploy-green
-        run: |
-          SHA="${{ inputs.image_sha }}"
-          VERSION="${{ inputs.version }}"
-          SHORT_SHA=${SHA:0:7}
-
-          if [ -n "$VERSION" ]; then
-            REVISION_SUFFIX="v${VERSION//./'-'}-${SHORT_SHA}"
-          else
-            REVISION_SUFFIX="sha-${SHORT_SHA}"
-          fi
-
-          echo "Revision suffix: $REVISION_SUFFIX"
-
-          az containerapp update \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
-            --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.APP_NAME }}:$SHA \
-            --revision-suffix $REVISION_SUFFIX \
-            --set-env-vars REVISION_LABEL=$REVISION_SUFFIX
-
-          echo "revision=${{ env.APP_NAME }}--$REVISION_SUFFIX" >> $GITHUB_OUTPUT
-          echo "suffix=$REVISION_SUFFIX" >> $GITHUB_OUTPUT
-
-      # ── Step 2: Wait for green revision to reach Running state ────────────
-      # ACA provisions replicas asynchronously; polling is required before the
-      # revision FQDN is reachable. Max wait: 20 × 10 s = 200 s.
-      - name: Wait for green revision to be running
-        run: |
-          for i in {1..20}; do
-            STATUS=$(az containerapp revision show \
-              --name ${{ env.APP_NAME }} \
-              --resource-group ${{ env.RG }} \
-              --revision ${{ steps.deploy-green.outputs.revision }} \
-              --query properties.runningState -o tsv)
-            echo "Revision state: $STATUS"
-            [ "$STATUS" = "Running" ] && break
-            sleep 10
-          done
-          if [ "$STATUS" != "Running" ]; then
-            echo "Revision failed to reach Running state"
-            exit 1
-          fi
-
-      # ── Step 3: Smoke test via per-revision URL (zero production traffic) ─
-      # Each ACA revision exposes its own FQDN, allowing testing without
-      # routing any real traffic to the new revision.
-      - name: Get green revision URL
-        id: revision-url
-        run: |
-          FQDN=$(az containerapp revision show \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
-            --revision ${{ steps.deploy-green.outputs.revision }} \
-            --query properties.fqdn -o tsv)
-          echo "url=https://$FQDN" >> $GITHUB_OUTPUT
-
-      - name: Smoke test green revision
-        run: |
-          curl --fail --retry 6 --retry-delay 10 \
-            ${{ steps.revision-url.outputs.url }}/health/ready
-          curl --fail --retry 6 --retry-delay 10 \
-            ${{ steps.revision-url.outputs.url }}/version
-
-      # ── Step 4: Promote green to 100% traffic ────────────────────────────
-      # Atomically shifts all ingress to the new revision. The previous
-      # revision is untouched at this point and still active for rollback.
-      - name: Promote green to 100% traffic
-        run: |
-          az containerapp ingress traffic set \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
-            --revision-weight \
-              ${{ steps.deploy-green.outputs.revision }}=100
-
-      # ── Step 5: Deactivate old revisions (keep 1 for rollback) ───────────
-      # Sorts active old revisions oldest-first, then deactivates all except
-      # the most recent (which is retained as a rollback target).
-      # `head -n -1` drops the last line, preserving the newest old revision.
-      # continue-on-error: true — this is post-promotion housekeeping. A failure
-      # here must NOT trigger the rollback step, which would deactivate the
-      # green revision that is now live at 100% traffic.
-      - name: Deactivate old revisions
-        continue-on-error: true
-        run: |
-          OLD_REVISIONS=$(az containerapp revision list \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
-            --query "sort_by([?properties.active && name != '${{ steps.deploy-green.outputs.revision }}'], &properties.createdTime)[].name" \
-            -o tsv | head -n -1)
-
-          for rev in $OLD_REVISIONS; do
-            echo "Deactivating: $rev"
-            az containerapp revision deactivate \
-              --name ${{ env.APP_NAME }} \
-              --resource-group ${{ env.RG }} \
-              --revision "$rev"
-          done
-
-      # ── Step 6: Rollback on failure ───────────────────────────────────────
-      # Runs only if a prior step failed AND the green revision was created.
-      # Step 5 uses continue-on-error so a housekeeping failure after a
-      # successful promotion does not trigger this rollback and take down the
-      # live revision. This step only fires for failures in steps 1–4.
-      - name: Rollback green revision on failure
-        if: failure() && steps.deploy-green.outputs.revision != ''
-        run: |
-          az containerapp revision deactivate \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
-            --revision "${{ steps.deploy-green.outputs.revision }}"
+    uses: ./.github/workflows/_shared-cd.yml
+    with:
+      environment:    development
+      image_sha:      ${{ inputs.image_sha }}
+      version:        ${{ inputs.version || '' }}
+      resource_group: rg-myapi-dev
+    secrets: inherit
