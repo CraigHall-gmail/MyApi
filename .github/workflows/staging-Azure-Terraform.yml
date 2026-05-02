@@ -52,7 +52,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: ./.github/workflows/_shared-aca-dev.yml
+    uses: ./.github/workflows/_shared-aca-terraform.yml
     with:
       environment:               staging
       working_directory:         infra/staging
