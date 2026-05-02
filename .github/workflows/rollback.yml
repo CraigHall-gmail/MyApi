@@ -3,85 +3,96 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
-#   Emergency manual workflow to roll back to the previous revision.
-#   Automatically identifies the live revision and the most recent active
-#   revision before it — no manual revision name required.
+#   Emergency manual workflow to roll back any environment to its previous
+#   revision. Automatically identifies the live revision and the most recent
+#   active revision before it — no manual revision name required.
 #
 # How to use:
-#   Actions → Rollback ACA Revision → Run workflow
-#   No inputs needed. The workflow discovers current and previous automatically.
+#   Actions → Rollback ACA Revision → Run workflow → select environment
+#   No other inputs needed. The workflow discovers revisions automatically.
 #
 # What it does:
-#   1. Discovers the live revision (100% traffic) and the previous active one
-#   2. Activates the previous revision if it was deactivated
-#   3. Shifts 100% of traffic to the previous revision
-#   4. Deactivates the bad (rolled-back) revision
-#   5. Enforces a max of 2 active revisions — deactivates anything older
-#   6. Confirms the final revision state
+#   1. Resolves the target resource group from the environment input
+#   2. Discovers the live revision (100% traffic) and the previous active one
+#   3. Activates the previous revision if it was deactivated
+#   4. Shifts 100% of traffic to the previous revision
+#   5. Deactivates the bad (rolled-back) revision
+#   6. Enforces a max of 2 active revisions
+#   7. Confirms the final revision state
 #
 # Concurrency:
-#   Shares the same concurrency group as development-CD.yml (deploy-development)
-#   to prevent a rollback and a deploy running simultaneously and corrupting
-#   revision traffic weights.
-#
-# Required GitHub environment secrets (environment: development):
-#   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
-#   AZURE_TENANT_ID       – Azure AD tenant ID
-#   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
+#   Shares the same concurrency group as the CD workflow for the selected
+#   environment to prevent a rollback and a deploy running simultaneously.
 # ══════════════════════════════════════════════════════════════════════════════
 
 name: Rollback API Container Revision
 
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to roll back"
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
 
-# Shares the CD concurrency group so a rollback and a deploy can never run
-# simultaneously and corrupt revision traffic weights.
 concurrency:
-  group: deploy-development
+  group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
 
 env:
-  RG:       rg-myapi-dev
   APP_NAME: myapi
 
 jobs:
   rollback:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # OIDC only — no checkout required
-    environment: development
+      id-token: write
+    environment: ${{ inputs.environment }}
 
     steps:
+      # Resolve the resource group for the selected environment.
+      - name: Resolve resource group
+        id: env-config
+        run: |
+          case "${{ inputs.environment }}" in
+            development) RG="rg-myapi-dev" ;;
+            staging)     RG="rg-myapi-staging" ;;
+            production)  RG="rg-myapi-production" ;;
+          esac
+          echo "rg=$RG" >> "$GITHUB_OUTPUT"
+          echo "Rolling back ${{ inputs.environment }} in $RG"
+
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # ── Step 1: Discover current and previous revisions ───────────────────
-      # CURRENT = revision receiving live traffic (trafficWeight > 0).
-      # PREVIOUS = most recently created active revision that is not CURRENT.
       - name: Discover revisions
         id: revisions
         run: |
           echo "=== All active revisions ==="
           az containerapp revision list \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
+            --name           "${{ env.APP_NAME }}" \
+            --resource-group "${{ steps.env-config.outputs.rg }}" \
             --query "sort_by([?properties.active], &properties.createdTime)[].{revision:name, traffic:properties.trafficWeight, state:properties.runningState, created:properties.createdTime}" \
             --output table
 
           CURRENT=$(az containerapp revision list \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
+            --name           "${{ env.APP_NAME }}" \
+            --resource-group "${{ steps.env-config.outputs.rg }}" \
             --query "sort_by([?properties.trafficWeight > \`0\`], &properties.createdTime)[-1].name" \
             -o tsv)
 
           PREVIOUS=$(az containerapp revision list \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
+            --name           "${{ env.APP_NAME }}" \
+            --resource-group "${{ steps.env-config.outputs.rg }}" \
             --query "sort_by([?properties.active && name != '$CURRENT'], &properties.createdTime)[-1].name" \
             -o tsv)
 
@@ -94,46 +105,40 @@ jobs:
             exit 1
           fi
 
-          echo "current=$CURRENT"   >> $GITHUB_OUTPUT
-          echo "previous=$PREVIOUS" >> $GITHUB_OUTPUT
-          echo ""
+          echo "current=$CURRENT"   >> "$GITHUB_OUTPUT"
+          echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
           echo "Rolling back: $CURRENT → $PREVIOUS"
 
-      # ── Step 2: Activate previous revision (if it was deactivated) ────────
-      # Retained revisions from the CD pipeline are already active at 0% traffic
-      # so this is usually a no-op. The || true prevents failure if already active.
+      # ── Step 2: Activate previous revision (if deactivated) ───────────────
       - name: Activate previous revision (if deactivated)
         run: |
           az containerapp revision activate \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
-            --revision "${{ steps.revisions.outputs.previous }}" || true
+            --name           "${{ env.APP_NAME }}" \
+            --resource-group "${{ steps.env-config.outputs.rg }}" \
+            --revision       "${{ steps.revisions.outputs.previous }}" || true
 
       # ── Step 3: Shift 100% traffic to previous revision ───────────────────
       - name: Shift traffic to previous revision
         run: |
           az containerapp ingress traffic set \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
-            --revision-weight "${{ steps.revisions.outputs.previous }}"=100
+            --name           "${{ env.APP_NAME }}" \
+            --resource-group "${{ steps.env-config.outputs.rg }}" \
+            --revision-weight "${{ steps.revisions.outputs.previous }}=100"
 
       # ── Step 4: Deactivate the bad revision ───────────────────────────────
       - name: Deactivate rolled-back revision
         run: |
           az containerapp revision deactivate \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
-            --revision "${{ steps.revisions.outputs.current }}"
+            --name           "${{ env.APP_NAME }}" \
+            --resource-group "${{ steps.env-config.outputs.rg }}" \
+            --revision       "${{ steps.revisions.outputs.current }}"
 
       # ── Step 5: Enforce max 2 active revisions ────────────────────────────
-      # After the rollback, PREVIOUS is the live revision. Keep at most one
-      # additional active revision as a backup (the most recently created one).
-      # Deactivate everything older than that.
       - name: Enforce max 2 active revisions
         run: |
           EXTRAS=$(az containerapp revision list \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
+            --name           "${{ env.APP_NAME }}" \
+            --resource-group "${{ steps.env-config.outputs.rg }}" \
             --query "sort_by([?properties.active && name != '${{ steps.revisions.outputs.previous }}'], &properties.createdTime)[].name" \
             -o tsv | head -n -1)
 
@@ -143,9 +148,9 @@ jobs:
             for rev in $EXTRAS; do
               echo "Deactivating: $rev"
               az containerapp revision deactivate \
-                --name ${{ env.APP_NAME }} \
-                --resource-group ${{ env.RG }} \
-                --revision "$rev"
+                --name           "${{ env.APP_NAME }}" \
+                --resource-group "${{ steps.env-config.outputs.rg }}" \
+                --revision       "$rev"
             done
           fi
 
@@ -154,7 +159,7 @@ jobs:
         run: |
           echo "=== Revision state after rollback ==="
           az containerapp revision list \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RG }} \
+            --name           "${{ env.APP_NAME }}" \
+            --resource-group "${{ steps.env-config.outputs.rg }}" \
             --query "sort_by([?properties.active], &properties.createdTime)[].{revision:name, traffic:properties.trafficWeight, state:properties.runningState}" \
             --output table

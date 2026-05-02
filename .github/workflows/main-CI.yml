@@ -1,52 +1,48 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# development-CI.yml  –  Continuous Integration: Build & Push to ACR
+# main-CI.yml  –  CI/CD: Build → Staging → Production
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
-#   Validates every push/PR to the development branch and, on a successful
-#   merge, builds the Docker image via ACR Tasks and hands off to the CD
-#   workflow for blue/green deployment.
+#   Full CI/CD pipeline for the main branch. Validates every push/PR, builds
+#   the image on merge, deploys to staging automatically, then to production
+#   after staging succeeds — with a manual approval gate enforced by the
+#   `production` GitHub Environment's protection rules.
 #
 # Triggers:
-#   • push → development  (excluding infra/** — Terraform has its own pipeline)
-#   • pull_request → development  (runs test job only; image is NOT pushed)
-#   • workflow_dispatch  (manual run; only test + build-push on development)
+#   • push → main  (excluding infra/** and .github/workflows/**)
+#   • pull_request → main  (test only — no image build or deploy)
+#   • workflow_dispatch  (manual; test + build on main branch only)
 #
-# Job flow:
-#   test ──► build-push ──► deploy  (calls development-CD.yml)
-#              ▲ skipped on PRs
+# Job flow (on push to main):
+#   test ──► build-push ──► deploy-staging ──► deploy-production
+#                                ▲ automatic        ▲ requires manual approval
+#                                                     (production env gate)
 #
-# Required GitHub environment secrets (environment: development):
-#   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
-#   AZURE_TENANT_ID       – Azure AD tenant ID
-#   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
+# Approval gate:
+#   Configure "Required reviewers" on the `production` GitHub Environment in
+#   Settings → Environments → production. The workflow requires no extra code
+#   — the environment protection rule pauses execution before deploy-production.
 #
-# OIDC federated identity must be configured on the App Registration for:
-#   subject: repo:<org>/<repo>:environment:development
+# OIDC federation required per environment:
+#   staging:    repo:<org>/<repo>:environment:staging
+#   production: repo:<org>/<repo>:environment:production
 #
-# Image naming convention:
-#   <ACR_NAME>.azurecr.io/<IMAGE_NAME>:<full-git-sha>  – immutable, always pushed
-#   <ACR_NAME>.azurecr.io/<IMAGE_NAME>:<semver>         – mutable pointer to latest build of that version
-#   The `latest` tag is intentionally NOT pushed — all deployments reference
-#   the SHA tag to guarantee traceability and safe rollbacks.
-#
-# Semantic versioning:
-#   The version is read from <Version> in MyApi.csproj and must be bumped
-#   manually (following semver: MAJOR.MINOR.PATCH) before merging a release.
-#   This version drives both the ACR image tag and the ACA revision suffix,
-#   making deployed revisions identifiable as e.g. myapi--v1-0-0-abc1234.
+# Secrets (environment-scoped in GitHub):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   Set as environment-level secrets so staging and production can use
+#   different service principals with appropriately scoped RBAC.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Development CI - Build & Push to Registry
+name: Main CI – Build, Staging & Production Deploy
 
 on:
   push:
-    branches: [development]
+    branches: [main]
     paths-ignore:
       - 'infra/**'
       - '.github/workflows/**'
   pull_request:
-    branches: [development]
+    branches: [main]
     paths-ignore:
       - 'infra/**'
       - '.github/workflows/**'
@@ -56,12 +52,11 @@ permissions:
   contents: read
 
 env:
-  ACR_NAME: acrimagereg
+  ACR_NAME:   acrimagereg
   IMAGE_NAME: myapi
 
 jobs:
   # ── Job 1: Test ──────────────────────────────────────────────────────────────
-  # Runs on every push and PR. Gate that must pass before any image is built.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -76,7 +71,6 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          # Cache key includes all .csproj files — any project change busts the cache.
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
 
@@ -90,7 +84,6 @@ jobs:
         run: dotnet test --no-build -c Release --logger trx
 
       - name: Publish test results
-        # Always upload so failures are visible in the GitHub Actions UI.
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -98,16 +91,15 @@ jobs:
           path: '**/*.trx'
 
   # ── Job 2: Build & Push ──────────────────────────────────────────────────────
-  # Only runs when code is merged to development (not on pull requests).
-  # Uses `az acr build` which runs the Docker build inside Azure — no Docker
-  # daemon needed on the runner and the image never leaves Azure's network.
+  # Uses the `staging` environment so OIDC federation is scoped to the staging
+  # service principal, which has AcrPush on the shared registry.
   build-push:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/development'  # skip on PRs
-    environment: development
+    if: github.ref == 'refs/heads/main'
+    environment: staging
     permissions:
-      id-token: write      # required for OIDC token exchange
+      id-token: write
       contents: read
     outputs:
       image-tag: ${{ steps.meta.outputs.tag }}
@@ -130,8 +122,8 @@ jobs:
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Set image tag
@@ -151,21 +143,37 @@ jobs:
 
       - name: Output image references
         run: |
-          echo "SHA tag  : ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
+          echo "SHA tag   : ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
           echo "Semver tag: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.semver.outputs.version }}"
 
-  # ── Job 3: Deploy ────────────────────────────────────────────────────────────
-  # Calls the shared CD workflow with development-specific parameters.
-  # Runs only on development branch merges.
-  deploy:
+  # ── Job 3: Deploy → Staging ──────────────────────────────────────────────────
+  # Runs automatically on every merge to main. No manual gate.
+  deploy-staging:
     needs: build-push
-    if: github.ref == 'refs/heads/development'
+    if: github.ref == 'refs/heads/main'
     permissions:
       id-token: write
     uses: ./.github/workflows/_shared-cd.yml
     with:
-      environment:    development
+      environment:    staging
       image_sha:      ${{ needs.build-push.outputs.image-tag }}
       version:        ${{ needs.build-push.outputs.version }}
-      resource_group: rg-myapi-dev
+      resource_group: rg-myapi-staging
+    secrets: inherit
+
+  # ── Job 4: Deploy → Production ───────────────────────────────────────────────
+  # Runs only after staging succeeds. The `production` GitHub Environment's
+  # "Required reviewers" protection rule pauses execution here until approved.
+  # No approval = no deploy, regardless of staging success.
+  deploy-production:
+    needs: [build-push, deploy-staging]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+    uses: ./.github/workflows/_shared-cd.yml
+    with:
+      environment:    production
+      image_sha:      ${{ needs.build-push.outputs.image-tag }}
+      version:        ${{ needs.build-push.outputs.version }}
+      resource_group: rg-myapi-production
     secrets: inherit
