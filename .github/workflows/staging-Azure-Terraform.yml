@@ -22,7 +22,7 @@
 #   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Staging - Azure Provision - Terraform
+name: Azure Provision - Staging - Terraform
 
 on:
   push:
