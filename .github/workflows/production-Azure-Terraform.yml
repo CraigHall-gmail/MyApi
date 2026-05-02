@@ -1,0 +1,67 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# production-Platform-Terraform.yml  –  Platform Provisioning: Production (Terraform)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Provisions and manages all Azure infrastructure for the production
+#   environment using Terraform. Delegates to _shared-aca-dev.yml.
+#
+#   The `production` GitHub Environment must have "Required reviewers" configured
+#   in repository settings. This gates the Terraform apply with a manual approval
+#   step — no additional workflow logic is required.
+#
+# Triggers:
+#   • push → main  (only when files under infra/production/** change)
+#   • pull_request → main  (plan only — no apply; posts plan to PR)
+#   • workflow_dispatch  (manual run; supports optional destroy flag)
+#
+# Required GitHub environment secrets (environment: production):
+#   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
+#   AZURE_TENANT_ID       – Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: Production - Azure Provision - Terraform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/production/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/production/**'
+
+  workflow_dispatch:
+    inputs:
+      destroy:
+        description: "Destroy resources?"
+        type: boolean
+        default: false
+
+concurrency:
+  group: terraform-production-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_shared-aca-dev.yml
+    with:
+      environment:               production
+      working_directory:         infra/production
+      tf_version:                "1.8.0"
+      destroy:                   ${{ inputs.destroy || false }}
+      tf_state_storage_account:  myapiterraformstate
+      tf_state_container:        tfstate
+      tf_state_key:              production/api.tfstate
+      apply_branch:              main
+    secrets:
+      AZURE_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
