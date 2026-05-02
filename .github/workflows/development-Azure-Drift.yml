@@ -29,7 +29,7 @@
 #   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Scheduled - Azure Drift Check
+name: Scheduled - Development Drift Check
 
 on:
   schedule:
