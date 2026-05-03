@@ -32,3 +32,11 @@ infra/
 # Docker files themselves
 Dockerfile
 .dockerignore
+
+# Dev tooling — not needed in the image and may contain local secrets
+Properties/
+.vscode/
+.claude/
+sonar-project.properties
+*.http
+*.sln
