@@ -73,7 +73,8 @@ on:
         required: true
 
 permissions:
-  id-token: write   # OIDC only — no repo checkout required
+  id-token: write   # OIDC — Azure login
+  contents: write   # push git tags on production deploy
 
 # One deploy per environment at a time. Queues rather than cancels to prevent
 # concurrent revisions corrupting traffic weights.
@@ -87,9 +88,16 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
 
+    env:
+      IMAGE_SHA:      ${{ inputs.image_sha }}
+      INPUT_VERSION:  ${{ inputs.version }}
+      APP_NAME:       ${{ inputs.app_name }}
+      RESOURCE_GROUP: ${{ inputs.resource_group }}
+      ACR_NAME:       ${{ inputs.acr_name }}
+
     steps:
       - name: Azure login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
           client-id:       ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
@@ -99,8 +107,8 @@ jobs:
       - name: Deploy green revision (0% traffic)
         id: deploy-green
         run: |
-          SHA="${{ inputs.image_sha }}"
-          VERSION="${{ inputs.version }}"
+          SHA="$IMAGE_SHA"
+          VERSION="$INPUT_VERSION"
           SHORT_SHA=${SHA:0:7}
 
           if [ -n "$VERSION" ]; then
@@ -112,21 +120,21 @@ jobs:
           echo "Revision suffix: $REVISION_SUFFIX"
 
           az containerapp update \
-            --name      "${{ inputs.app_name }}" \
-            --resource-group "${{ inputs.resource_group }}" \
-            --image     "${{ inputs.acr_name }}.azurecr.io/${{ inputs.app_name }}:${SHA}" \
+            --name      "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image     "$ACR_NAME.azurecr.io/$APP_NAME:${SHA}" \
             --revision-suffix "$REVISION_SUFFIX" \
             --set-env-vars "REVISION_LABEL=${REVISION_SUFFIX}"
 
-          echo "revision=${{ inputs.app_name }}--${REVISION_SUFFIX}" >> "$GITHUB_OUTPUT"
+          echo "revision=$APP_NAME--${REVISION_SUFFIX}" >> "$GITHUB_OUTPUT"
 
       # ── Step 2: Wait for green revision to reach Running state ────────────
       - name: Wait for green revision to be running
         run: |
           for i in {1..20}; do
             STATUS=$(az containerapp revision show \
-              --name           "${{ inputs.app_name }}" \
-              --resource-group "${{ inputs.resource_group }}" \
+              --name           "$APP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
               --revision       "${{ steps.deploy-green.outputs.revision }}" \
               --query properties.runningState -o tsv)
             echo "Revision state: $STATUS"
@@ -143,8 +151,8 @@ jobs:
         id: revision-url
         run: |
           FQDN=$(az containerapp revision show \
-            --name           "${{ inputs.app_name }}" \
-            --resource-group "${{ inputs.resource_group }}" \
+            --name           "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
             --revision       "${{ steps.deploy-green.outputs.revision }}" \
             --query properties.fqdn -o tsv)
           echo "url=https://${FQDN}" >> "$GITHUB_OUTPUT"
@@ -160,8 +168,8 @@ jobs:
       - name: Promote green to 100% traffic
         run: |
           az containerapp ingress traffic set \
-            --name           "${{ inputs.app_name }}" \
-            --resource-group "${{ inputs.resource_group }}" \
+            --name           "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
             --revision-weight "${{ steps.deploy-green.outputs.revision }}=100"
 
       # ── Step 5: Deactivate old revisions (keep 1 for rollback) ───────────
@@ -170,24 +178,43 @@ jobs:
         continue-on-error: true
         run: |
           OLD_REVISIONS=$(az containerapp revision list \
-            --name           "${{ inputs.app_name }}" \
-            --resource-group "${{ inputs.resource_group }}" \
+            --name           "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
             --query "sort_by([?properties.active && name != '${{ steps.deploy-green.outputs.revision }}'], &properties.createdTime)[].name" \
             -o tsv | head -n -1)
 
           for rev in $OLD_REVISIONS; do
             echo "Deactivating: $rev"
             az containerapp revision deactivate \
-              --name           "${{ inputs.app_name }}" \
-              --resource-group "${{ inputs.resource_group }}" \
+              --name           "$APP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
               --revision       "$rev"
           done
 
-      # ── Step 6: Rollback on failure ───────────────────────────────────────
+      # ── Step 6: Tag the commit with the semantic version (production only) ─
+      - name: Tag production release
+        if: inputs.environment == 'production' && inputs.version != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ inputs.version }}"
+          SHA="${{ github.sha }}"
+          if gh api "repos/${{ github.repository }}/git/refs/tags/${TAG}" --silent 2>/dev/null; then
+            echo "Tag ${TAG} already exists, skipping."
+          else
+            gh api "repos/${{ github.repository }}/git/refs" \
+              -X POST \
+              -f ref="refs/tags/${TAG}" \
+              -f sha="${SHA}"
+            echo "Tagged ${SHA} as ${TAG}"
+          fi
+
+      # ── Step 7: Rollback on failure ───────────────────────────────────────
       - name: Rollback green revision on failure
         if: failure() && steps.deploy-green.outputs.revision != ''
         run: |
           az containerapp revision deactivate \
-            --name           "${{ inputs.app_name }}" \
-            --resource-group "${{ inputs.resource_group }}" \
+            --name           "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
             --revision       "${{ steps.deploy-green.outputs.revision }}"

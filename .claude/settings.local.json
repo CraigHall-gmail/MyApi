@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s https://api.github.com/repos/actions/cache/git/commits/0057852bfaa89a56745cba8c7296529d2fc39830)",
+      "Bash(curl -s https://api.github.com/repos/actions/upload-artifact/git/commits/ea165f8d65b6e75b540449e92b4886f43607fa02)"
+    ]
+  }
+}

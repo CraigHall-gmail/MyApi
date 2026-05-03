@@ -6,3 +6,37 @@
 **/.vs
 **/node_modules
 **/README.md
+
+# Environment and secrets
+.env
+.env.*
+**/secrets.json
+**/usersecrets.json
+
+# Development / non-production config
+appsettings.Development.json
+appsettings.Test.json
+appsettings.Local.json
+
+# Certificates and key material
+**/*.pfx
+**/*.key
+**/*.pem
+**/*.p12
+**/*.cer
+
+# CI/CD and infrastructure — not needed in the image
+.github/
+infra/
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+
+# Dev tooling — not needed in the image and may contain local secrets
+Properties/
+.vscode/
+.claude/
+sonar-project.properties
+*.http
+*.sln
