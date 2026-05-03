@@ -10,9 +10,8 @@
 #   for production) automatically — no extra logic needed in this workflow.
 #
 # Callers:
-#   development-CI.yml     →  environment: development
-#   development-CD.yml     →  environment: development  (manual dispatch wrapper)
-#   main-CI.yml            →  environment: staging / production
+#   ci.yml             →  environment: development / staging / production
+#   development-CD.yml →  environment: development  (manual dispatch wrapper)
 #
 # Blue/Green deployment sequence:
 #   1. Deploy new (green) revision at 0% traffic
