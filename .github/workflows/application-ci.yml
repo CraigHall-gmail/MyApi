@@ -58,16 +58,19 @@ jobs:
   # Runs on every push and PR. Must pass before any image is built or deployed.
   build-test-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # SonarCloud PR decoration
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
@@ -83,19 +86,16 @@ jobs:
         run: dotnet test --no-build -c Release --logger trx
 
       - name: Analyze with SonarCloud
-        uses: SonarSource/sonarcloud-github-action@4006f663ecaf1f8093e8e4abb9227f6041f52216
+        uses: SonarSource/sonarcloud-github-action@ffc3010689be73b8e5ae0c57ce35968afd7909e8 # v5.0.0
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
-          args: >-
-            -Dsonar.projectKey=CraigHall-gmail_MyApi
-            -Dsonar.organization=craighall-gmail
-            -Dsonar.qualitygate.wait=true
           projectBaseDir: .
 
       - name: Publish test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-results
           path: '**/*.trx'
@@ -118,7 +118,7 @@ jobs:
       version:   ${{ steps.semver.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Read semantic version from project
         id: semver
@@ -132,7 +132,7 @@ jobs:
           echo "Semantic version: $VERSION"
 
       - name: Azure login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
           client-id:       ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
@@ -170,7 +170,10 @@ jobs:
       image_sha:      ${{ needs.build-push.outputs.image-tag }}
       version:        ${{ needs.build-push.outputs.version }}
       resource_group: rg-myapi-dev
-    secrets: inherit
+    secrets:
+      AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
   # ── Job 4: Deploy → Staging ───────────────────────────────────────────────
   # Runs automatically on every merge to main.
@@ -185,7 +188,10 @@ jobs:
       image_sha:      ${{ needs.build-push.outputs.image-tag }}
       version:        ${{ needs.build-push.outputs.version }}
       resource_group: rg-myapi-staging
-    secrets: inherit
+    secrets:
+      AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
   # ── Job 5: Deploy → Production ────────────────────────────────────────────
   # Runs only after staging succeeds. The `production` GitHub Environment's
@@ -201,4 +207,7 @@ jobs:
       image_sha:      ${{ needs.build-push.outputs.image-tag }}
       version:        ${{ needs.build-push.outputs.version }}
       resource_group: rg-myapi-production
-    secrets: inherit
+    secrets:
+      AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
