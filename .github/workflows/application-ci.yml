@@ -164,6 +164,7 @@ jobs:
     if: github.ref == 'refs/heads/development'
     permissions:
       id-token: write
+      contents: write
     uses: ./.github/workflows/_shared-cd.yml
     with:
       environment:    development
@@ -182,6 +183,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     permissions:
       id-token: write
+      contents: write
     uses: ./.github/workflows/_shared-cd.yml
     with:
       environment:    staging
@@ -201,6 +203,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     permissions:
       id-token: write
+      contents: write
     uses: ./.github/workflows/_shared-cd.yml
     with:
       environment:    production
