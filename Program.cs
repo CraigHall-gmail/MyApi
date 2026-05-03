@@ -19,11 +19,7 @@ app.MapGet("/version", () => new {
     timestamp = DateTime.UtcNow
 });
 
-// Configure the HTTP request pipeline.
-//if (!app.Environment.IsProduction())
-//{
-    app.MapOpenApi();
-//}
+app.MapOpenApi();
 
 app.UseHttpsRedirection();
 
@@ -46,12 +42,10 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast");
 
-//if (!app.Environment.IsProduction()) {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-//}
+app.UseSwagger();
+app.UseSwaggerUI();
 
-app.Run();
+await app.RunAsync();
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {
