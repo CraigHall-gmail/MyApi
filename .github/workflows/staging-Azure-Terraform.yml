@@ -10,7 +10,9 @@
 # Triggers:
 #   • push → main  (only when files under infra/staging/** change)
 #   • pull_request → main  (plan only — no apply; posts plan to PR)
-#   • workflow_dispatch  (manual run; supports optional destroy flag)
+#
+# Manual runs:
+#   Use provision.yml (workflow_dispatch) to target this environment manually.
 #
 # Plan vs Apply:
 #   • pull_request  → plan output posted as a PR comment; no apply
@@ -34,13 +36,6 @@ on:
     paths:
       - 'infra/staging/**'
 
-  workflow_dispatch:
-    inputs:
-      destroy:
-        description: "Destroy resources?"
-        type: boolean
-        default: false
-
 concurrency:
   group: terraform-staging-${{ github.ref }}
   cancel-in-progress: false
@@ -57,7 +52,7 @@ jobs:
       environment:               staging
       working_directory:         infra/staging
       tf_version:                "1.8.0"
-      destroy:                   ${{ inputs.destroy || false }}
+      destroy:                   false
       tf_state_storage_account:  myapiterraformstate
       tf_state_container:        tfstate
       tf_state_key:              staging/api.tfstate

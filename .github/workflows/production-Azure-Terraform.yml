@@ -13,7 +13,9 @@
 # Triggers:
 #   • push → main  (only when files under infra/production/** change)
 #   • pull_request → main  (plan only — no apply; posts plan to PR)
-#   • workflow_dispatch  (manual run; supports optional destroy flag)
+#
+# Manual runs:
+#   Use provision.yml (workflow_dispatch) to target this environment manually.
 #
 # Required GitHub environment secrets (environment: production):
 #   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
@@ -33,13 +35,6 @@ on:
     paths:
       - 'infra/production/**'
 
-  workflow_dispatch:
-    inputs:
-      destroy:
-        description: "Destroy resources?"
-        type: boolean
-        default: false
-
 concurrency:
   group: terraform-production-${{ github.ref }}
   cancel-in-progress: false
@@ -56,7 +51,7 @@ jobs:
       environment:               production
       working_directory:         infra/production
       tf_version:                "1.8.0"
-      destroy:                   ${{ inputs.destroy || false }}
+      destroy:                   false
       tf_state_storage_account:  myapiterraformstate
       tf_state_container:        tfstate
       tf_state_key:              production/api.tfstate
