@@ -198,16 +198,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v${{ inputs.version }}"
-          SHA="${{ github.sha }}"
-          if gh api "repos/${{ github.repository }}/git/refs/tags/${TAG}" --silent 2>/dev/null; then
+          TAG="v${INPUT_VERSION}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" --silent 2>/dev/null; then
             echo "Tag ${TAG} already exists, skipping."
           else
-            gh api "repos/${{ github.repository }}/git/refs" \
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
               -X POST \
               -f ref="refs/tags/${TAG}" \
-              -f sha="${SHA}"
-            echo "Tagged ${SHA} as ${TAG}"
+              -f sha="${GITHUB_SHA}"
+            echo "Tagged ${GITHUB_SHA} as ${TAG}"
           fi
 
       # ── Step 7: Rollback on failure ───────────────────────────────────────
