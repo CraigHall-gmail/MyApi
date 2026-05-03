@@ -10,7 +10,9 @@
 # Triggers:
 #   • push → development  (only when files under infra/development/** change)
 #   • pull_request → development  (plan only — no apply; posts plan to PR)
-#   • workflow_dispatch  (manual run; supports optional destroy flag)
+#
+# Manual runs:
+#   Use provision.yml (workflow_dispatch) to target this environment manually.
 #
 # Separation from CI/CD:
 #   The CI workflow excludes infra/** via paths-ignore, and this workflow
@@ -54,13 +56,6 @@ on:
     paths:
       - 'infra/development/**'
 
-  workflow_dispatch:
-    inputs:
-      destroy:
-        description: "Destroy resources?"
-        type: boolean
-        default: false
-
 # Serialises Terraform runs per ref to prevent concurrent state modifications.
 concurrency:
   group: terraform-${{ github.ref }}
@@ -78,7 +73,7 @@ jobs:
       environment:               development
       working_directory:         infra/development
       tf_version:                "1.8.0"
-      destroy:                   ${{ inputs.destroy || false }}
+      destroy:                   false
       tf_state_storage_account:  myapiterraformstate
       tf_state_container:        tfstate
       tf_state_key:              development/api.tfstate
