@@ -57,7 +57,7 @@ env:
 
 jobs:
   # ── Job 1: Test ──────────────────────────────────────────────────────────────
-  test:
+  build-test-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +105,7 @@ jobs:
             #-Dsonar.verbose= # optional, default is false
           # When you need the analysis to take place in a directory other than the one from which it was launched, default is .
           projectBaseDir: .
-          
+
       - name: Publish test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -117,7 +117,7 @@ jobs:
   # Uses the `staging` environment so OIDC federation is scoped to the staging
   # service principal, which has AcrPush on the shared registry.
   build-push:
-    needs: test
+    needs: build-test-scan
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: staging
