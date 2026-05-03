@@ -32,7 +32,7 @@ jobs:
   drift-check:
     name: Drift Check (staging)
     runs-on: ubuntu-latest
-    environment: staging
+    environment: environments-drift
     defaults:
       run:
         working-directory: infra/staging

@@ -1,10 +1,23 @@
-obj/Debug/net10.0/MyApi.AssemblyInfo.cs
-obj/Debug/net10.0/MyApi.AssemblyInfoInputs.cache
-obj/Debug/net10.0/MyApi.assets.cache
-obj/Debug/net10.0/MyApi.GeneratedMSBuildEditorConfig.editorconfig
-obj/Debug/net10.0/MyApi.AssemblyInfo.cs
-obj/Debug/net10.0/MyApi.AssemblyInfoInputs.cache
-obj/Debug/net10.0/MyApi.AssemblyInfo.cs
-obj/Debug/net10.0/MyApi.AssemblyInfoInputs.cache
-obj/Debug/net10.0/MyApi.AssemblyInfo.cs
-obj/Debug/net10.0/MyApi.AssemblyInfoInputs.cache
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Rider / JetBrains
+.idea/
+
+# NuGet
+*.nupkg
+packages/
+
+# Environment & secrets
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
