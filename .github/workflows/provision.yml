@@ -1,0 +1,95 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# provision.yml  –  Manual Infrastructure Provisioning (all environments)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Single workflow_dispatch entry point for manually running Terraform against
+#   any environment. Select the target environment and optionally destroy.
+#
+#   Auto-triggered provisioning (push/PR path changes) is handled by the
+#   environment-specific workflows:
+#     development-Azure-Terraform.yml  →  push/PR on development branch
+#     staging-Azure-Terraform.yml      →  push/PR on main branch
+#     production-Azure-Terraform.yml   →  push/PR on main branch
+#
+# Inputs:
+#   environment  – development | staging | production
+#   destroy      – set true to run terraform destroy (irreversible — use carefully)
+#
+# Required secrets (per GitHub Environment):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: Azure Provision - Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        type: choice
+        required: true
+        options:
+          - development
+          - staging
+          - production
+      destroy:
+        description: "Destroy resources? (irreversible)"
+        type: boolean
+        default: false
+
+# Serialises manual Terraform runs per environment to prevent concurrent state modifications.
+concurrency:
+  group: terraform-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  # Resolves environment-specific Terraform config from the selected input.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      working_directory: ${{ steps.config.outputs.working_directory }}
+      tfstate_key:       ${{ steps.config.outputs.tfstate_key }}
+      apply_branch:      ${{ steps.config.outputs.apply_branch }}
+    steps:
+      - id: config
+        run: |
+          case "${{ inputs.environment }}" in
+            development)
+              echo "working_directory=infra/development"    >> $GITHUB_OUTPUT
+              echo "tfstate_key=development/api.tfstate"    >> $GITHUB_OUTPUT
+              echo "apply_branch=development"               >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "working_directory=infra/staging"        >> $GITHUB_OUTPUT
+              echo "tfstate_key=staging/api.tfstate"        >> $GITHUB_OUTPUT
+              echo "apply_branch=main"                      >> $GITHUB_OUTPUT
+              ;;
+            production)
+              echo "working_directory=infra/production"     >> $GITHUB_OUTPUT
+              echo "tfstate_key=production/api.tfstate"     >> $GITHUB_OUTPUT
+              echo "apply_branch=main"                      >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+  provision:
+    needs: prepare
+    uses: ./.github/workflows/_shared-aca-terraform.yml
+    with:
+      environment:              ${{ inputs.environment }}
+      working_directory:        ${{ needs.prepare.outputs.working_directory }}
+      tf_version:               "1.8.0"
+      destroy:                  ${{ inputs.destroy }}
+      tf_state_storage_account: myapiterraformstate
+      tf_state_container:       tfstate
+      tf_state_key:             ${{ needs.prepare.outputs.tfstate_key }}
+      apply_branch:             ${{ needs.prepare.outputs.apply_branch }}
+    secrets:
+      AZURE_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
