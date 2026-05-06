@@ -140,5 +140,6 @@ jobs:
         run: |
           dotnet ef database update \
             --project MyApi.csproj \
+            --configuration Release \
             --no-build \
             --connection "$CONNECTION_STRING"
