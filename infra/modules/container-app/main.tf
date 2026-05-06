@@ -73,7 +73,7 @@ resource "azurerm_container_app" "api" {
         transport               = "HTTP"
         path                    = var.startup_probe_path
         port                    = var.port
-        interval_seconds        = 30  # 10 × 30 s = 300 s max startup window
+        interval_seconds        = 30 # 10 × 30 s = 300 s max startup window
         failure_count_threshold = 10
       }
     }
