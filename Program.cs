@@ -1,8 +1,15 @@
+using Microsoft.EntityFrameworkCore;
+using MyApi.Data;
+using MyApi.Models;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 var app = builder.Build();
 
@@ -20,8 +27,6 @@ app.MapGet("/version", () => new {
 });
 
 app.MapOpenApi();
-
-app.UseHttpsRedirection();
 
 var summaries = new[]
 {
@@ -42,6 +47,24 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast");
 
+app.MapPost("/cities", async (CreateCityRequest request, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Name))
+        return Results.BadRequest("City name is required.");
+
+    var city = new City { Name = request.Name.Trim() };
+    db.Cities.Add(city);
+    await db.SaveChangesAsync();
+    return Results.Created($"/cities/{city.Id}", city);
+})
+.WithName("CreateCity")
+.WithTags("Cities");
+
+app.MapGet("/cities", async (AppDbContext db) =>
+    await db.Cities.OrderBy(c => c.Name).ToListAsync())
+.WithName("GetCities")
+.WithTags("Cities");
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -51,3 +74,5 @@ record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
 }
+
+record CreateCityRequest(string Name);
