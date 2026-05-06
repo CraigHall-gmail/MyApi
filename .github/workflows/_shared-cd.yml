@@ -13,7 +13,8 @@
 #   ci.yml             →  environment: development / staging / production
 #   development-CD.yml →  environment: development  (manual dispatch wrapper)
 #
-# Blue/Green deployment sequence:
+# Deployment sequence:
+#   0. Run EF migrations against the target database (via ef-migrate.yml)
 #   1. Deploy new (green) revision at 0% traffic
 #   2. Poll until the revision reaches Running state  (max ~200 s)
 #   3. Retrieve the revision-specific FQDN and run smoke tests
@@ -28,6 +29,7 @@
 #   app_name       (optional) Container App name              [myapi]
 #   resource_group (required) Resource group of the Container App
 #   acr_name       (optional) Azure Container Registry name   [acrimagereg]
+#   key_vault_name (required) Azure Key Vault holding db-connection-string
 #
 # Secrets (passed from caller):
 #   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
@@ -64,6 +66,10 @@ on:
         type: string
         default: acrimagereg
         description: "Azure Container Registry name"
+      key_vault_name:
+        required: true
+        type: string
+        description: "Azure Key Vault name holding the db-connection-string secret"
     secrets:
       AZURE_CLIENT_ID:
         required: true
@@ -83,8 +89,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── Job 1: Apply EF migrations before any new revision starts ────────────
+  migrate:
+    uses: ./.github/workflows/ef-migrate.yml
+    with:
+      environment:    ${{ inputs.environment }}
+      key_vault_name: ${{ inputs.key_vault_name }}
+    secrets:
+      AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  # ── Job 2: Blue/Green deploy ──────────────────────────────────────────────
   deploy:
     name: Deploy (${{ inputs.environment }})
+    needs: migrate
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
 
@@ -103,6 +122,17 @@ jobs:
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # ── Step 0: Fetch connection string from Key Vault ────────────────────
+      - name: Fetch DB connection string from Key Vault
+        id: kv
+        run: |
+          CONN=$(az keyvault secret show \
+            --vault-name "${{ inputs.key_vault_name }}" \
+            --name "db-connection-string" \
+            --query value -o tsv)
+          echo "::add-mask::$CONN"
+          echo "connection_string=$CONN" >> "$GITHUB_OUTPUT"
+
       # ── Step 1: Deploy GREEN revision at 0% traffic ───────────────────────
       - name: Deploy green revision (0% traffic)
         id: deploy-green
@@ -119,12 +149,18 @@ jobs:
 
           echo "Revision suffix: $REVISION_SUFFIX"
 
+          # Capitalise first letter of environment name → Development | Staging | Production
+          ENV="${{ inputs.environment }}"
+          ASPNET_ENV="${ENV^}"
+
           az containerapp update \
             --name      "$APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --image     "$ACR_NAME.azurecr.io/$APP_NAME:${SHA}" \
             --revision-suffix "$REVISION_SUFFIX" \
-            --set-env-vars "REVISION_LABEL=${REVISION_SUFFIX}"
+            --set-env-vars "REVISION_LABEL=${REVISION_SUFFIX}" \
+            --set-env-vars "ASPNETCORE_ENVIRONMENT=${ASPNET_ENV}" \
+            --set-env-vars "ConnectionStrings__DefaultConnection=${{ steps.kv.outputs.connection_string }}"
 
           echo "revision=$APP_NAME--${REVISION_SUFFIX}" >> "$GITHUB_OUTPUT"
 
