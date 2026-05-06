@@ -49,12 +49,6 @@ variable "backup_retention_days" {
   default     = 7
 }
 
-variable "zone" {
-  type        = string
-  description = "Availability zone to pin the server to (e.g. \"1\", \"2\", \"3\")"
-  default     = "1"
-}
-
 variable "tags" {
   type        = map(string)
   description = "Resource tags"

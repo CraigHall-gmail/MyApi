@@ -76,7 +76,6 @@ module "postgres" {
   admin_password      = var.pg_admin_password
   sku_name            = var.pg_sku_name
   storage_mb          = var.pg_storage_mb
-  zone                = var.pg_zone
   tags                = var.tags
 }
 

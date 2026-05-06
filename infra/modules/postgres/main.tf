@@ -8,13 +8,18 @@ resource "azurerm_postgresql_flexible_server" "this" {
 
   version  = "16"
   sku_name = var.sku_name
-  zone     = var.zone
 
   storage_mb                   = var.storage_mb
   backup_retention_days        = var.backup_retention_days
   geo_redundant_backup_enabled = false
 
   tags = var.tags
+
+  lifecycle {
+    # azurerm ~>3.x always sends zone in PATCH bodies; ignore it to prevent
+    # "zone can only be changed when exchanged with standby_availability_zone" errors.
+    ignore_changes = [zone]
+  }
 }
 
 # The 0.0.0.0/0.0.0.0 sentinel allows all Azure-hosted services to connect

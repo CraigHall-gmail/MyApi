@@ -1,41 +1,45 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# _shared-aca-dev.yml  –  Shared Reusable Workflow: Terraform Plan & Apply
+# _shared-aca-terraform.yml  –  Shared Reusable Workflow: Terraform Plan & Apply
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
 #   Reusable workflow (workflow_call only) that executes the full Terraform
-#   lifecycle — init, format check, validate, plan, optional PR comment, and
-#   conditional apply. Designed to be called by environment-specific callers
-#   (e.g. development-Platform-Terraform.yml) that supply state config and
-#   credentials as inputs/secrets.
+#   lifecycle split across two independent jobs:
+#     plan  — init, fmt-check, validate, plan, PR comment
+#     apply — init, download plan artifact, apply
+#
+#   Splitting jobs means a failed apply can be re-run without repeating the
+#   plan. The tfplan artifact is shared between jobs via GitHub Actions artifacts.
 #
 # Callers:
-#   development-Platform-Terraform.yml  →  environment: development
+#   development-Azure-Terraform.yml  →  environment: development
+#   staging-Azure-Terraform.yml      →  environment: staging
+#   production-Azure-Terraform.yml   →  environment: production
+#   provision.yml                    →  manual dispatch (any environment)
 #
 # Inputs:
-#   environment             (required) GitHub environment name; gates approvals
-#   working_directory       (optional) Path to Terraform root  [infra/development]
-#   tf_version              (optional) Terraform CLI version to install  [1.8.0]
-#   destroy                 (optional) Run terraform destroy instead of apply
+#   environment              (required) GitHub environment name; gates approvals
+#   working_directory        (optional) Path to Terraform root  [infra/development]
+#   tf_version               (optional) Terraform CLI version    [1.8.0]
+#   destroy                  (optional) Run terraform destroy instead of apply
 #   tf_state_storage_account (required) Azure Storage account for remote state
-#   tf_state_container      (required) Blob container name
-#   tf_state_key            (required) Blob path/key for the state file
+#   tf_state_container       (required) Blob container name
+#   tf_state_key             (required) Blob path/key for the state file
+#   apply_branch             (optional) Branch on which apply is permitted
 #
-# Secrets (passed from caller):
+# Secrets (passed from caller via secrets: inherit):
 #   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
-#   Used for both `az login` (OIDC) and the azurerm provider (ARM_* env vars).
+#   PG_ADMIN_PASSWORD — injected as TF_VAR_pg_admin_password
 #
 # Apply conditions:
 #   Apply only runs when:
-#     1. The event is a push to the development branch (not a PR)
+#     1. The event is a push to apply_branch (not a PR)
 #     2. Terraform plan exit code is 2 (changes detected)
-#   This prevents apply on PRs and avoids a no-op apply when nothing changed.
 #
 # State locking:
 #   Azure Blob Storage uses lease-based locking. If a previous run crashed
-#   mid-apply, the lock blob may remain held. The "Break orphaned state lock"
-#   step releases it pre-emptively. The caller's concurrency group reduces the
-#   chance of a live run being interrupted by this.
+#   mid-apply, the lock blob may remain held. The plan job breaks the lease
+#   pre-emptively. The caller's concurrency group prevents concurrent runs.
 # ══════════════════════════════════════════════════════════════════════════════
 
 name: Shared – Azure Terraform Plan/Apply
@@ -86,28 +90,29 @@ on:
 permissions:
   id-token: write
   contents: read
-  pull-requests: write    # allows the plan step to comment on PRs
+  pull-requests: write
 
 jobs:
-  terraform:
-    name: Terraform (${{ inputs.environment }})
+  # ── Job 1: Plan ───────────────────────────────────────────────────────────
+  # Runs on every trigger. Produces a tfplan artifact consumed by the apply job.
+  plan:
+    name: Plan (${{ inputs.environment }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
 
+    outputs:
+      plan_exit_code: ${{ steps.plan.outputs.exitcode }}
+
     env:
-      # azurerm provider authenticates via these env vars + OIDC automatically.
-      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
-      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      ARM_USE_OIDC:        "true"
-      # Terraform picks this up automatically as var.pg_admin_password
-      TF_VAR_pg_admin_password: ${{ secrets.PG_ADMIN_PASSWORD }}
-      # Bind workflow_call inputs to env vars so they are never interpolated
-      # directly into run scripts (prevents script injection via crafted inputs).
-      TF_STATE_STORAGE_ACCOUNT: ${{ inputs.tf_state_storage_account }}
+      ARM_CLIENT_ID:             ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID:             ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID:       ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC:              "true"
+      TF_VAR_pg_admin_password:  ${{ secrets.PG_ADMIN_PASSWORD }}
+      TF_STATE_STORAGE_ACCOUNT:  ${{ inputs.tf_state_storage_account }}
       TF_STATE_CONTAINER:        ${{ inputs.tf_state_container }}
       TF_STATE_KEY:              ${{ inputs.tf_state_key }}
 
@@ -123,8 +128,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # Breaks a stale lease left by a crashed apply.
-      # || true suppresses the expected error when no lease is held (the normal case),
-      # avoiding a red annotation on every clean run.
+      # || true suppresses the error when no lease is held (the normal case).
       - name: Break orphaned state lock (if held)
         run: |
           az storage blob lease break \
@@ -138,8 +142,6 @@ jobs:
         with:
           terraform_version: ${{ inputs.tf_version }}
 
-      # Backend config is supplied at runtime so this workflow is environment-
-      # agnostic. No backend.tf file with hardcoded values is required.
       - name: Terraform Init
         run: |
           terraform init \
@@ -154,9 +156,8 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      # -detailed-exitcode returns: 0 = no changes, 1 = error, 2 = changes.
-      # continue-on-error captures exit code 2 without failing the job here;
-      # "Fail on Plan Error" below converts exit code 1 into an actual failure.
+      # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes pending.
+      # continue-on-error lets exit code 2 fall through; Fail step below catches 1.
       - name: Terraform Plan
         id: plan
         run: |
@@ -168,9 +169,17 @@ jobs:
             ${{ inputs.destroy && '-destroy' || '' }}
         continue-on-error: true
 
-      # Posts the plan as a PR comment so reviewers can inspect changes before
-      # approving the merge. Output is capped at 60 000 chars to stay within
-      # GitHub's comment size limit; full output is always in the workflow logs.
+      # Uploaded so the apply job can consume it without re-running plan.
+      # Retention is 1 day — apply must follow within the same workflow run.
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tfplan-${{ inputs.environment }}-${{ github.run_id }}
+          path: ${{ inputs.working_directory }}/tfplan
+          retention-days: 1
+
+      # Posts the plan as a PR comment so reviewers can inspect changes.
+      # Output is capped at 60 000 chars to stay within GitHub's comment limit.
       - name: Post Plan to PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
@@ -194,16 +203,63 @@ jobs:
             });
 
       - name: Fail on Plan Error
-        # outcome is 'failure' for both exit code 1 (error) and exit code 2 (changes).
-        # Only exit code 1 is a true error; exit code 2 means changes are pending and
-        # is handled by the Apply step below.
         if: steps.plan.outputs.exitcode == '1'
         run: exit 1
 
-      # Apply only on branch push (not PRs) and only when plan detected changes.
-      # Exit code 2 from -detailed-exitcode means "success with changes".
+  # ── Job 2: Apply ──────────────────────────────────────────────────────────
+  # Runs only on branch push when plan detected changes. Can be re-run
+  # independently if it fails (e.g. transient Azure API error or timeout).
+  apply:
+    name: Apply (${{ inputs.environment }})
+    needs: plan
+    if: |
+      github.ref == format('refs/heads/{0}', inputs.apply_branch) &&
+      needs.plan.outputs.plan_exit_code == '2'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    env:
+      ARM_CLIENT_ID:             ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID:             ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID:       ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC:              "true"
+      TF_VAR_pg_admin_password:  ${{ secrets.PG_ADMIN_PASSWORD }}
+      TF_STATE_STORAGE_ACCOUNT:  ${{ inputs.tf_state_storage_account }}
+      TF_STATE_CONTAINER:        ${{ inputs.tf_state_container }}
+      TF_STATE_KEY:              ${{ inputs.tf_state_key }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ inputs.tf_version }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="storage_account_name=$TF_STATE_STORAGE_ACCOUNT" \
+            -backend-config="container_name=$TF_STATE_CONTAINER" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="use_oidc=true"
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        with:
+          name: tfplan-${{ inputs.environment }}-${{ github.run_id }}
+          path: ${{ inputs.working_directory }}
+
       - name: Terraform Apply
-        if: |
-          github.ref == format('refs/heads/{0}', inputs.apply_branch) &&
-          steps.plan.outputs.exitcode == '2'
         run: terraform apply -auto-approve tfplan
