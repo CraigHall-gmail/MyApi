@@ -70,6 +70,12 @@ variable "aspnetcore_environment" {
   default     = "Development"
 }
 
+variable "pg_zone" {
+  type        = string
+  description = "Availability zone for the PostgreSQL server"
+  default     = "1"
+}
+
 variable "pg_server_name" {
   type        = string
   description = "Name of the PostgreSQL Flexible Server (globally unique)"
