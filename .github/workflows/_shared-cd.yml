@@ -107,12 +107,13 @@ jobs:
       contents: write   # push git tags on production deploy
 
     env:
-      IMAGE_SHA:       ${{ inputs.image_sha }}
-      INPUT_VERSION:   ${{ inputs.version }}
-      APP_NAME:        ${{ inputs.app_name }}
-      RESOURCE_GROUP:  ${{ inputs.resource_group }}
-      ACR_NAME:        ${{ inputs.acr_name }}
-      KEY_VAULT_NAME:  ${{ inputs.key_vault_name }}
+      IMAGE_SHA:         ${{ inputs.image_sha }}
+      INPUT_VERSION:     ${{ inputs.version }}
+      INPUT_ENVIRONMENT: ${{ inputs.environment }}
+      APP_NAME:          ${{ inputs.app_name }}
+      RESOURCE_GROUP:    ${{ inputs.resource_group }}
+      ACR_NAME:          ${{ inputs.acr_name }}
+      KEY_VAULT_NAME:    ${{ inputs.key_vault_name }}
 
     steps:
       - name: Azure login (OIDC)
@@ -152,8 +153,7 @@ jobs:
           echo "Revision suffix: $REVISION_SUFFIX"
 
           # Capitalise first letter of environment name → Development | Staging | Production
-          ENV="${{ inputs.environment }}"
-          ASPNET_ENV="${ENV^}"
+          ASPNET_ENV="${INPUT_ENVIRONMENT^}"
 
           az containerapp update \
             --name      "$APP_NAME" \
