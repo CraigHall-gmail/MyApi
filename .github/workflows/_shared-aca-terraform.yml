@@ -87,11 +87,6 @@ on:
         required: true
         description: "PostgreSQL admin password (stored as TF_VAR_pg_admin_password)"
 
-permissions:
-  id-token: write
-  contents: read
-  pull-requests: write
-
 jobs:
   # ── Job 1: Plan ───────────────────────────────────────────────────────────
   # Runs on every trigger. Produces a tfplan artifact consumed by the apply job.
@@ -99,6 +94,10 @@ jobs:
     name: Plan (${{ inputs.environment }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}
@@ -217,6 +216,9 @@ jobs:
       needs.plan.outputs.plan_exit_code == '2'
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: ${{ inputs.working_directory }}

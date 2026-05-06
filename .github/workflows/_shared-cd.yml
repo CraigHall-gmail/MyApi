@@ -78,10 +78,6 @@ on:
       AZURE_SUBSCRIPTION_ID:
         required: true
 
-permissions:
-  id-token: write   # OIDC — Azure login
-  contents: write   # push git tags on production deploy
-
 # One deploy per environment at a time. Queues rather than cancels to prevent
 # concurrent revisions corrupting traffic weights.
 concurrency:
@@ -92,6 +88,9 @@ jobs:
   # ── Job 1: Apply EF migrations before any new revision starts ────────────
   migrate:
     uses: ./.github/workflows/ef-migrate.yml
+    permissions:
+      id-token: write
+      contents: read
     with:
       environment:    ${{ inputs.environment }}
       key_vault_name: ${{ inputs.key_vault_name }}
@@ -103,13 +102,17 @@ jobs:
     needs: migrate
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write   # OIDC — Azure login
+      contents: write   # push git tags on production deploy
 
     env:
-      IMAGE_SHA:      ${{ inputs.image_sha }}
-      INPUT_VERSION:  ${{ inputs.version }}
-      APP_NAME:       ${{ inputs.app_name }}
-      RESOURCE_GROUP: ${{ inputs.resource_group }}
-      ACR_NAME:       ${{ inputs.acr_name }}
+      IMAGE_SHA:       ${{ inputs.image_sha }}
+      INPUT_VERSION:   ${{ inputs.version }}
+      APP_NAME:        ${{ inputs.app_name }}
+      RESOURCE_GROUP:  ${{ inputs.resource_group }}
+      ACR_NAME:        ${{ inputs.acr_name }}
+      KEY_VAULT_NAME:  ${{ inputs.key_vault_name }}
 
     steps:
       - name: Azure login (OIDC)
@@ -124,7 +127,7 @@ jobs:
         id: kv
         run: |
           CONN=$(az keyvault secret show \
-            --vault-name "${{ inputs.key_vault_name }}" \
+            --vault-name "$KEY_VAULT_NAME" \
             --name "db-connection-string" \
             --query value -o tsv)
           echo "::add-mask::$CONN"
@@ -133,6 +136,8 @@ jobs:
       # ── Step 1: Deploy GREEN revision at 0% traffic ───────────────────────
       - name: Deploy green revision (0% traffic)
         id: deploy-green
+        env:
+          CONNECTION_STRING: ${{ steps.kv.outputs.connection_string }}
         run: |
           SHA="$IMAGE_SHA"
           VERSION="$INPUT_VERSION"
@@ -157,7 +162,7 @@ jobs:
             --revision-suffix "$REVISION_SUFFIX" \
             --set-env-vars "REVISION_LABEL=${REVISION_SUFFIX}" \
             --set-env-vars "ASPNETCORE_ENVIRONMENT=${ASPNET_ENV}" \
-            --set-env-vars "ConnectionStrings__DefaultConnection=${{ steps.kv.outputs.connection_string }}"
+            --set-env-vars "ConnectionStrings__DefaultConnection=$CONNECTION_STRING"
 
           echo "revision=$APP_NAME--${REVISION_SUFFIX}" >> "$GITHUB_OUTPUT"
 
