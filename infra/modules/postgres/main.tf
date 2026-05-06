@@ -14,6 +14,12 @@ resource "azurerm_postgresql_flexible_server" "this" {
   geo_redundant_backup_enabled = false
 
   tags = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      zone, # Azure auto-assigns; changing it requires coordinated HA standby zone swap
+    ]
+  }
 }
 
 # The 0.0.0.0/0.0.0.0 sentinel allows all Azure-hosted services to connect
