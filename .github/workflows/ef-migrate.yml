@@ -73,6 +73,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
 
+    env:
+      INPUT_ENVIRONMENT:    ${{ inputs.environment }}
+      INPUT_KEY_VAULT_NAME: ${{ inputs.key_vault_name }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -107,30 +111,34 @@ jobs:
       - name: Resolve Key Vault name
         id: kv
         run: |
-          KV="${{ inputs.key_vault_name }}"
+          KV="$INPUT_KEY_VAULT_NAME"
           if [ -z "$KV" ]; then
-            case "${{ inputs.environment }}" in
+            case "$INPUT_ENVIRONMENT" in
               development) KV="kv-myapi-dev" ;;
               staging)     KV="kv-myapi-stg" ;;
               production)  KV="kv-myapi-prd" ;;
-              *) echo "::error::Unknown environment '${{ inputs.environment }}'"; exit 1 ;;
+              *) echo "::error::Unknown environment '$INPUT_ENVIRONMENT'"; exit 1 ;;
             esac
           fi
           echo "name=$KV" >> "$GITHUB_OUTPUT"
 
       - name: Fetch connection string from Key Vault
         id: secret
+        env:
+          KV_NAME: ${{ steps.kv.outputs.name }}
         run: |
           CONN=$(az keyvault secret show \
-            --vault-name "${{ steps.kv.outputs.name }}" \
+            --vault-name "$KV_NAME" \
             --name "db-connection-string" \
             --query value -o tsv)
           echo "::add-mask::$CONN"
           echo "connection_string=$CONN" >> "$GITHUB_OUTPUT"
 
       - name: Apply EF migrations
+        env:
+          CONNECTION_STRING: ${{ steps.secret.outputs.connection_string }}
         run: |
           dotnet ef database update \
             --project MyApi.csproj \
             --no-build \
-            --connection "${{ steps.secret.outputs.connection_string }}"
+            --connection "$CONNECTION_STRING"
