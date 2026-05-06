@@ -20,6 +20,7 @@ tags = {
 
 # PostgreSQL — pg_admin_password is supplied via TF_VAR_pg_admin_password (GitHub Secret)
 # Key Vault names must be globally unique across Azure; adjust suffix if name is taken.
+pg_zone           = "1"  # confirm with: az postgres flexible-server show --name psql-myapi-dev --resource-group rg-myapi-dev --query availabilityZone -o tsv
 pg_server_name    = "psql-myapi-dev"
 pg_key_vault_name = "kv-myapi-dev"
 pg_sku_name       = "B_Standard_B1ms"
