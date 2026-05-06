@@ -46,6 +46,11 @@ resource "azurerm_container_app" "api" {
         value = tostring(var.port)
       }
 
+      env {
+        name  = "ASPNETCORE_ENVIRONMENT"
+        value = var.aspnetcore_environment
+      }
+
       liveness_probe {
         transport               = "HTTP"
         path                    = var.liveness_probe_path

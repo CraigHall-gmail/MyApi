@@ -79,6 +79,9 @@ on:
         required: true
       AZURE_SUBSCRIPTION_ID:
         required: true
+      PG_ADMIN_PASSWORD:
+        required: true
+        description: "PostgreSQL admin password (stored as TF_VAR_pg_admin_password)"
 
 permissions:
   id-token: write
@@ -100,6 +103,8 @@ jobs:
       ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       ARM_USE_OIDC:        "true"
+      # Terraform picks this up automatically as var.pg_admin_password
+      TF_VAR_pg_admin_password: ${{ secrets.PG_ADMIN_PASSWORD }}
       # Bind workflow_call inputs to env vars so they are never interpolated
       # directly into run scripts (prevents script injection via crafted inputs).
       TF_STATE_STORAGE_ACCOUNT: ${{ inputs.tf_state_storage_account }}

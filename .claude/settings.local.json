@@ -10,7 +10,9 @@
       "Bash(psql -U admin -h localhost -c \"\\\\du\")",
       "PowerShell($env:PGPASSWORD = \"admin\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U admin -h localhost -c \"\\\\du\" 2>&1)",
       "PowerShell($env:PGPASSWORD = \"\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -l 2>&1)",
-      "PowerShell($env:PGPASSWORD = \"admin\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -c \"SELECT 1\" 2>&1)"
+      "PowerShell($env:PGPASSWORD = \"admin\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -c \"SELECT 1\" 2>&1)",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet build *)"
     ]
   }
 }
