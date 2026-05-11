@@ -12,7 +12,14 @@
       "PowerShell($env:PGPASSWORD = \"\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -l 2>&1)",
       "PowerShell($env:PGPASSWORD = \"admin\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -c \"SELECT 1\" 2>&1)",
       "Bash(dotnet restore *)",
-      "Bash(dotnet build *)"
+      "Bash(dotnet build *)",
+      "Bash(dotnet run *)",
+      "PowerShell(Get-Process -Id 31708 -ErrorAction SilentlyContinue)",
+      "Bash(Get-Content \"C:\\\\Users\\\\craigh\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Project-MyApi\\\\1deab006-4bad-48e4-8d9e-f52f021c06ef\\\\tasks\\\\b14adb810.output\" -Wait)",
+      "Bash(Select-String --line-buffered \"Now listening|Error|Exception|Failed|Unhandled\")",
+      "PowerShell(Stop-Process -Id 31708 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Name MyApi -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)"
     ]
   }
 }
