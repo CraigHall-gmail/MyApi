@@ -1,0 +1,76 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# codeql.yml  –  CodeQL Security Analysis (C#)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Runs GitHub CodeQL static analysis on every pull request and on a weekly
+#   schedule against main. The push trigger is intentionally omitted so that
+#   merging a PR does not fire a second scan alongside the PR scan — the PR
+#   scan already covers the merged result, and the schedule catches any drift
+#   introduced by new CodeQL rules between PRs.
+#
+# Creating this file disables GitHub's Default Setup for this repository,
+# which was the source of the duplicate scans (Default Setup fires on both
+# push and pull_request events with no way to restrict it).
+#
+# Triggers:
+#   • pull_request → development | main  (on every PR — primary scan)
+#   • schedule     → main, weekly Mon 03:00 UTC  (catches new rule releases)
+#
+# paths-ignore mirrors application-ci.yml so infra-only changes do not
+# trigger a C# scan.
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [development, main]
+    paths-ignore:
+      - 'infra/**'
+      - '.github/workflows/**'
+  schedule:
+    - cron: '0 3 * * 1'  # 03:00 UTC every Monday
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (csharp)
+    runs-on: ubuntu-latest
+    permissions:
+      contents:       read
+      security-events: write  # required to upload SARIF results
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: csharp
