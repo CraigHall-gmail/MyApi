@@ -37,7 +37,7 @@ on:
       - 'infra/staging/**'
 
 concurrency:
-  group: terraform-staging-${{ github.ref }}
+  group: terraform-staging
   cancel-in-progress: false
 
 permissions:
