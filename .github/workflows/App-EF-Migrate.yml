@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# ef-migrate.yml  –  EF Core Database Migrations
+# App-EF-Migrate.yml  –  EF Core Database Migrations
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
@@ -23,7 +23,7 @@
 #   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: EF – Database Migrations
+name: App - EF Migrations
 
 on:
   workflow_call:
