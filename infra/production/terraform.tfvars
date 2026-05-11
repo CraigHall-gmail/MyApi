@@ -7,10 +7,10 @@ acr_name           = "acrimagereg"
 acr_resource_group = "Playground"
 app_name           = "myapi"
 
-cpu          = 1.0
-memory       = "2Gi"
-min_replicas = 2
-max_replicas = 10
+cpu          = 0.5
+memory       = "1Gi"
+min_replicas = 1
+max_replicas = 5
 
 tags = {
   project     = "myapi"
