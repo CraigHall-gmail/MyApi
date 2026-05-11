@@ -1,13 +1,21 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 using MyApi.Data;
 using MyApi.Models;
+using System.Reflection;
+
+var version = (typeof(Program).Assembly
+    .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+    ?.InformationalVersion ?? "1.0.0")
+    .Split('+')[0];
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "MyApi", Version = version }));
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
