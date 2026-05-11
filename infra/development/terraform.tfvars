@@ -7,7 +7,7 @@ acr_name           = "acrimagereg"
 acr_resource_group = "Playground"
 app_name           = "myapi"
 
-cpu          = 0.3
+cpu          = 0.25
 memory       = "0.5Gi"
 min_replicas = 1
 max_replicas = 3
