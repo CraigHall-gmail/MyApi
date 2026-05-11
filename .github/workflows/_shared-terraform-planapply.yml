@@ -194,7 +194,8 @@ jobs:
     name: Apply (${{ inputs.environment }})
     needs: plan
     if: |
-      github.ref == format('refs/heads/{0}', inputs.apply_branch) &&
+      (github.ref == format('refs/heads/{0}', inputs.apply_branch) ||
+       github.event_name == 'workflow_dispatch') &&
       needs.plan.outputs.plan_exit_code == '2'
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
