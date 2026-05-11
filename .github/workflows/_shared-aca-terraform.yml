@@ -89,7 +89,7 @@ on:
 
 jobs:
   # ── Job 1: Plan ───────────────────────────────────────────────────────────
-  # Runs on every trigger. Produces a tfplan artifact consumed by the apply job.
+  # Runs on every trigger. Posts plan output to PRs; apply re-plans independently.
   plan:
     name: Plan (${{ inputs.environment }})
     runs-on: ubuntu-latest
@@ -125,16 +125,6 @@ jobs:
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Breaks a stale lease left by a crashed apply.
-      # || true suppresses the error when no lease is held (the normal case).
-      - name: Break orphaned state lock (if held)
-        run: |
-          az storage blob lease break \
-            --account-name "$TF_STATE_STORAGE_ACCOUNT" \
-            --container-name "$TF_STATE_CONTAINER" \
-            --blob-name "$TF_STATE_KEY" \
-            --auth-mode login 2>/dev/null || true
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
@@ -167,15 +157,6 @@ jobs:
             ${{ inputs.destroy && '-destroy' || '' }}
         continue-on-error: true
 
-      # Uploaded so the apply job can consume it without re-running plan.
-      # Retention is 1 day — apply must follow within the same workflow run.
-      - name: Upload plan artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: tfplan-${{ inputs.environment }}-${{ github.run_id }}
-          path: ${{ inputs.working_directory }}/tfplan
-          retention-days: 1
-
       # Posts the plan as a PR comment so reviewers can inspect changes.
       # Output is capped at 60 000 chars to stay within GitHub's comment limit.
       - name: Post Plan to PR
@@ -205,8 +186,9 @@ jobs:
         run: exit 1
 
   # ── Job 2: Apply ──────────────────────────────────────────────────────────
-  # Runs only on branch push when plan detected changes. Can be re-run
-  # independently if it fails (e.g. transient Azure API error or timeout).
+  # Runs only on branch push when plan detected changes. Re-plans immediately
+  # before applying to guarantee a fresh state snapshot — eliminates stale-plan
+  # errors that occur when another workflow touches state between plan and apply.
   apply:
     name: Apply (${{ inputs.environment }})
     needs: plan
@@ -256,11 +238,13 @@ jobs:
             -backend-config="key=$TF_STATE_KEY" \
             -backend-config="use_oidc=true"
 
-      - name: Download plan artifact
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
-        with:
-          name: tfplan-${{ inputs.environment }}-${{ github.run_id }}
-          path: ${{ inputs.working_directory }}
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var-file="terraform.tfvars" \
+            -out=tfplan \
+            -lock-timeout=5m \
+            ${{ inputs.destroy && '-destroy' || '' }}
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
