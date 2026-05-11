@@ -90,6 +90,7 @@ jobs:
       tf_state_key:             ${{ needs.prepare.outputs.tfstate_key }}
       apply_branch:             ${{ needs.prepare.outputs.apply_branch }}
     secrets:
-      AZURE_CLIENT_ID:        ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_TENANT_ID:        ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_SUBSCRIPTION_ID:  ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      PG_ADMIN_PASSWORD:     ${{ secrets.PG_ADMIN_PASSWORD }}

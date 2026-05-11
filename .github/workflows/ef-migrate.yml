@@ -1,0 +1,145 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# ef-migrate.yml  –  EF Core Database Migrations
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   Applies pending EF Core migrations against the target environment's
+#   PostgreSQL database. The connection string is fetched at runtime from the
+#   environment's Key Vault — it is never stored in source control or logs.
+#
+#   Runs as a pre-deploy step (workflow_call from _shared-cd.yml) to ensure
+#   the schema is ready before any new container revision starts. Can also be
+#   triggered manually via workflow_dispatch for ad-hoc migration runs.
+#
+# Inputs (workflow_call):
+#   environment     – GitHub environment name (development | staging | production)
+#   key_vault_name  – Name of the Azure Key Vault containing 'db-connection-string'
+#
+# Concurrency:
+#   One migration run per environment at a time. cancel-in-progress: false
+#   queues rather than cancels to prevent partial schema states.
+#
+# Required GitHub environment secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: EF – Database Migrations
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: "GitHub environment name (development | staging | production)"
+      key_vault_name:
+        required: true
+        type: string
+        description: "Name of the Azure Key Vault containing db-connection-string"
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        type: choice
+        required: true
+        options:
+          - development
+          - staging
+          - production
+      key_vault_name:
+        description: "Key Vault name (leave blank to use default for environment)"
+        type: string
+        required: false
+
+concurrency:
+  group: ef-migrate-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  migrate:
+    name: Migrate (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    env:
+      INPUT_ENVIRONMENT:    ${{ inputs.environment }}
+      INPUT_KEY_VAULT_NAME: ${{ inputs.key_vault_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore and build
+        run: dotnet build MyApi.csproj --configuration Release --no-incremental
+
+      - name: Install EF Core tools
+        run: dotnet tool install --global dotnet-ef
+
+      - name: Azure login (OIDC)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Resolve Key Vault name: use the workflow_call input when provided;
+      # fall back to the per-environment default for manual workflow_dispatch runs.
+      - name: Resolve Key Vault name
+        id: kv
+        run: |
+          KV="$INPUT_KEY_VAULT_NAME"
+          if [ -z "$KV" ]; then
+            case "$INPUT_ENVIRONMENT" in
+              development) KV="kv-myapi-dev" ;;
+              staging)     KV="kv-myapi-stg" ;;
+              production)  KV="kv-myapi-prd" ;;
+              *) echo "::error::Unknown environment '$INPUT_ENVIRONMENT'"; exit 1 ;;
+            esac
+          fi
+          echo "name=$KV" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch connection string from Key Vault
+        id: secret
+        env:
+          KV_NAME: ${{ steps.kv.outputs.name }}
+        run: |
+          CONN=$(az keyvault secret show \
+            --vault-name "$KV_NAME" \
+            --name "db-connection-string" \
+            --query value -o tsv)
+          echo "::add-mask::$CONN"
+          echo "connection_string=$CONN" >> "$GITHUB_OUTPUT"
+
+      - name: Apply EF migrations
+        env:
+          CONNECTION_STRING: ${{ steps.secret.outputs.connection_string }}
+        run: |
+          dotnet ef database update \
+            --project MyApi.csproj \
+            --configuration Release \
+            --no-build \
+            --connection "$CONNECTION_STRING"

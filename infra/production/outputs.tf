@@ -17,3 +17,13 @@ output "app_fqdn" {
   description = "Fully-qualified domain name of the Container App"
   value       = module.api_app.container_app_fqdn
 }
+
+output "pg_server_fqdn" {
+  description = "FQDN of the PostgreSQL Flexible Server"
+  value       = module.postgres.server_fqdn
+}
+
+output "key_vault_name" {
+  description = "Name of the Key Vault holding the DB connection string"
+  value       = module.key_vault.key_vault_name
+}
