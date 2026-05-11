@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# codeql.yml  –  CodeQL Security Analysis (C#)
+# App-CodeQL.yml  –  CodeQL Security Analysis (C#)
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
@@ -17,7 +17,7 @@
 #   • pull_request → development | main  (on every PR — primary scan)
 #   • schedule     → main, weekly Mon 03:00 UTC  (catches new rule releases)
 #
-# paths-ignore mirrors application-ci.yml so infra-only changes do not
+# paths-ignore mirrors App-CI.yml so infra-only changes do not
 # trigger a C# scan.
 # ══════════════════════════════════════════════════════════════════════════════
 

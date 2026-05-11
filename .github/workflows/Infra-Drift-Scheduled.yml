@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# drift.yml  –  Nightly Infrastructure Drift Check (all environments)
+# Infra-Drift-Scheduled.yml  –  Nightly Infrastructure Drift Check (all environments)
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:

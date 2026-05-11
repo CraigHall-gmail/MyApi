@@ -1,10 +1,10 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# production-Platform-Terraform.yml  –  Platform Provisioning: Production (Terraform)
+# Infra-Provision-Production.yml  –  Infrastructure Provisioning: Production
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
 #   Provisions and manages all Azure infrastructure for the production
-#   environment using Terraform. Delegates to _shared-aca-dev.yml.
+#   environment using Terraform. Delegates to _shared-terraform-planapply.yml.
 #
 #   The `production` GitHub Environment must have "Required reviewers" configured
 #   in repository settings. This gates the Terraform apply with a manual approval
@@ -15,7 +15,7 @@
 #   • pull_request → main  (plan only — no apply; posts plan to PR)
 #
 # Manual runs:
-#   Use provision.yml (workflow_dispatch) to target this environment manually.
+#   Use Infra-Provision-Manual.yml (workflow_dispatch) to target this environment manually.
 #
 # Required GitHub environment secrets (environment: production):
 #   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation

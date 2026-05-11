@@ -10,8 +10,7 @@
 #   for production) automatically — no extra logic needed in this workflow.
 #
 # Callers:
-#   ci.yml             →  environment: development / staging / production
-#   development-CD.yml →  environment: development  (manual dispatch wrapper)
+#   App-CI.yml  →  environment: development / staging / production
 #
 # Deployment sequence:
 #   0. Run EF migrations against the target database (via ef-migrate.yml)
@@ -87,7 +86,7 @@ concurrency:
 jobs:
   # ── Job 1: Apply EF migrations before any new revision starts ────────────
   migrate:
-    uses: ./.github/workflows/app-EF-Migrate.yml
+    uses: ./.github/workflows/App-EF-Migrate.yml
     permissions:
       id-token: write
       contents: read

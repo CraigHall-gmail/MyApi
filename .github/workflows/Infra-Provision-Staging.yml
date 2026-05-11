@@ -1,18 +1,18 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# staging-Platform-Terraform.yml  –  Platform Provisioning: Staging (Terraform)
+# Infra-Provision-Staging.yml  –  Infrastructure Provisioning: Staging
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
 #   Provisions and manages all Azure infrastructure for the staging environment
-#   using Terraform. Delegates execution to the shared reusable workflow
-#   (_shared-aca-dev.yml) which handles init, plan, and apply.
+#   using Terraform. Delegates to _shared-terraform-planapply.yml which handles
+#   init, plan, and apply.
 #
 # Triggers:
 #   • push → main  (only when files under infra/staging/** change)
 #   • pull_request → main  (plan only — no apply; posts plan to PR)
 #
 # Manual runs:
-#   Use provision.yml (workflow_dispatch) to target this environment manually.
+#   Use Infra-Provision-Manual.yml (workflow_dispatch) to target this environment manually.
 #
 # Plan vs Apply:
 #   • pull_request  → plan output posted as a PR comment; no apply
