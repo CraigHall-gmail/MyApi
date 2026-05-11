@@ -1,21 +1,21 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# _shared-aca-terraform.yml  –  Shared Reusable Workflow: Terraform Plan & Apply
+# _shared-terraform-planapply.yml  –  Shared Reusable Workflow: Terraform Plan & Apply
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
 #   Reusable workflow (workflow_call only) that executes the full Terraform
-#   lifecycle split across two independent jobs:
+#   lifecycle split across two jobs:
 #     plan  — init, fmt-check, validate, plan, PR comment
-#     apply — init, download plan artifact, apply
+#     apply — init, fresh plan, apply
 #
-#   Splitting jobs means a failed apply can be re-run without repeating the
-#   plan. The tfplan artifact is shared between jobs via GitHub Actions artifacts.
+#   The apply job re-plans immediately before applying to guarantee a fresh
+#   state snapshot, eliminating stale-plan errors caused by concurrent runs.
 #
 # Callers:
-#   development-Azure-Terraform.yml  →  environment: development
-#   staging-Azure-Terraform.yml      →  environment: staging
-#   production-Azure-Terraform.yml   →  environment: production
-#   provision.yml                    →  manual dispatch (any environment)
+#   Infra-Provision-Development.yml  →  environment: development
+#   Infra-Provision-Staging.yml      →  environment: staging
+#   Infra-Provision-Production.yml   →  environment: production
+#   Infra-Provision-Manual.yml       →  manual dispatch (any environment)
 #
 # Inputs:
 #   environment              (required) GitHub environment name; gates approvals
@@ -27,19 +27,19 @@
 #   tf_state_key             (required) Blob path/key for the state file
 #   apply_branch             (optional) Branch on which apply is permitted
 #
-# Secrets (passed from caller via secrets: inherit):
+# Secrets (passed from caller):
 #   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
 #   PG_ADMIN_PASSWORD — injected as TF_VAR_pg_admin_password
 #
 # Apply conditions:
 #   Apply only runs when:
 #     1. The event is a push to apply_branch (not a PR)
-#     2. Terraform plan exit code is 2 (changes detected)
+#     2. The plan job detected changes (exit code 2)
 #
 # State locking:
-#   Azure Blob Storage uses lease-based locking. If a previous run crashed
-#   mid-apply, the lock blob may remain held. The plan job breaks the lease
-#   pre-emptively. The caller's concurrency group prevents concurrent runs.
+#   Azure Blob Storage uses lease-based locking. -lock-timeout=5m on both
+#   plan and apply waits for any legitimate lock to clear rather than
+#   breaking it. The caller's concurrency group prevents concurrent runs.
 # ══════════════════════════════════════════════════════════════════════════════
 
 name: _Shared – Terraform (Plan & Apply)

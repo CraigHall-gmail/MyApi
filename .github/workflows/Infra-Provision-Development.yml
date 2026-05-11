@@ -1,26 +1,26 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# development-Platform-Terraform.yml  –  Platform Provisioning (Terraform)
+# Infra-Provision-Development.yml  –  Infrastructure Provisioning: Development
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
 #   Provisions and manages all Azure infrastructure for the development
-#   environment using Terraform. Delegates execution to the shared reusable
-#   workflow (_shared-aca-dev.yml) which handles init, plan, and apply.
+#   environment using Terraform. Delegates to _shared-terraform-planapply.yml
+#   which handles init, plan, and apply.
 #
 # Triggers:
 #   • push → development  (only when files under infra/development/** change)
 #   • pull_request → development  (plan only — no apply; posts plan to PR)
 #
 # Manual runs:
-#   Use provision.yml (workflow_dispatch) to target this environment manually.
+#   Use Infra-Provision-Manual.yml (workflow_dispatch) to target this environment manually.
 #
 # Separation from CI/CD:
-#   The CI workflow excludes infra/** via paths-ignore, and this workflow
+#   App-CI.yml excludes infra/** via paths-ignore, and this workflow
 #   targets infra/development/** via paths. The two pipelines never overlap.
 #
 # Concurrency:
-#   One Terraform run per git ref at a time. cancel-in-progress: false queues
-#   rather than cancels to prevent state corruption from partially applied plans.
+#   One Terraform run per environment at a time. cancel-in-progress: false
+#   queues rather than cancels to prevent state corruption from partial applies.
 #
 # Terraform state:
 #   Stored in Azure Blob Storage:
@@ -39,8 +39,7 @@
 #   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
 #
 # Destroy:
-#   Set the `destroy` input to true via workflow_dispatch to run
-#   `terraform destroy`. This is intentionally not automated — it requires
+#   Use Infra-Provision-Manual.yml with destroy: true. Not automated — requires
 #   an explicit manual trigger to prevent accidental infrastructure deletion.
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -56,7 +55,7 @@ on:
     paths:
       - 'infra/development/**'
 
-# Serialises Terraform runs per ref to prevent concurrent state modifications.
+# Serialises Terraform runs per environment to prevent concurrent state modifications.
 concurrency:
   group: terraform-development
   cancel-in-progress: false

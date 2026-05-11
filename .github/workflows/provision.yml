@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# provision.yml  –  Manual Infrastructure Provisioning (all environments)
+# Infra-Provision-Manual.yml  –  Manual Infrastructure Provisioning
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
@@ -8,9 +8,9 @@
 #
 #   Auto-triggered provisioning (push/PR path changes) is handled by the
 #   environment-specific workflows:
-#     development-Azure-Terraform.yml  →  push/PR on development branch
-#     staging-Azure-Terraform.yml      →  push/PR on main branch
-#     production-Azure-Terraform.yml   →  push/PR on main branch
+#     Infra-Provision-Development.yml  →  push/PR on development branch
+#     Infra-Provision-Staging.yml      →  push/PR on main branch
+#     Infra-Provision-Production.yml   →  push/PR on main branch
 #
 # Inputs:
 #   environment  – development | staging | production
@@ -20,7 +20,7 @@
 #   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Azure Provision - Manual
+name: Infra - Provision - Manual
 
 on:
   workflow_dispatch:
@@ -79,7 +79,7 @@ jobs:
 
   provision:
     needs: prepare
-    uses: ./.github/workflows/_shared-aca-terraform.yml
+    uses: ./.github/workflows/_shared-terraform-planapply.yml
     with:
       environment:              ${{ inputs.environment }}
       working_directory:        ${{ needs.prepare.outputs.working_directory }}

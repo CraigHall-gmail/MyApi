@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# rollback.yml  –  Manual Rollback: Restore Previous ACA Revision
+# App-Rollback.yml  –  Manual Rollback: Restore Previous ACA Revision
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
@@ -8,7 +8,7 @@
 #   active revision before it — no manual revision name required.
 #
 # How to use:
-#   Actions → Rollback ACA Revision → Run workflow → select environment
+#   Actions → App - Rollback → Run workflow → select environment
 #   No other inputs needed. The workflow discovers revisions automatically.
 #
 # What it does:
