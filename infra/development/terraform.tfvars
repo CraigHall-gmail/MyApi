@@ -8,7 +8,7 @@ acr_resource_group = "Playground"
 app_name           = "myapi"
 
 cpu          = 0.3
-memory       = "500mi"
+memory       = "0.50Gi"
 min_replicas = 1
 max_replicas = 3
 
