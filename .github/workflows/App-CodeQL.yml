@@ -21,7 +21,7 @@
 # trigger a C# scan.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: CodeQL
+name: App - CodeQL
 
 on:
   pull_request:

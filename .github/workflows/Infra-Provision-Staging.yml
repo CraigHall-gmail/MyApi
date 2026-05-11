@@ -1,42 +1,43 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# production-Platform-Terraform.yml  –  Platform Provisioning: Production (Terraform)
+# staging-Platform-Terraform.yml  –  Platform Provisioning: Staging (Terraform)
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Purpose:
-#   Provisions and manages all Azure infrastructure for the production
-#   environment using Terraform. Delegates to _shared-aca-dev.yml.
-#
-#   The `production` GitHub Environment must have "Required reviewers" configured
-#   in repository settings. This gates the Terraform apply with a manual approval
-#   step — no additional workflow logic is required.
+#   Provisions and manages all Azure infrastructure for the staging environment
+#   using Terraform. Delegates execution to the shared reusable workflow
+#   (_shared-aca-dev.yml) which handles init, plan, and apply.
 #
 # Triggers:
-#   • push → main  (only when files under infra/production/** change)
+#   • push → main  (only when files under infra/staging/** change)
 #   • pull_request → main  (plan only — no apply; posts plan to PR)
 #
 # Manual runs:
 #   Use provision.yml (workflow_dispatch) to target this environment manually.
 #
-# Required GitHub environment secrets (environment: production):
+# Plan vs Apply:
+#   • pull_request  → plan output posted as a PR comment; no apply
+#   • push/dispatch → plan + auto-approve apply (only if changes detected)
+#
+# Required GitHub environment secrets (environment: staging):
 #   AZURE_CLIENT_ID       – App Registration client ID for OIDC federation
 #   AZURE_TENANT_ID       – Azure AD tenant ID
 #   AZURE_SUBSCRIPTION_ID – Target Azure subscription ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Azure Provision - Production - Terraform
+name: Infra - Provision - Staging
 
 on:
   push:
     branches: [main]
     paths:
-      - 'infra/production/**'
+      - 'infra/staging/**'
   pull_request:
     branches: [main]
     paths:
-      - 'infra/production/**'
+      - 'infra/staging/**'
 
 concurrency:
-  group: terraform-production
+  group: terraform-staging
   cancel-in-progress: false
 
 permissions:
@@ -46,15 +47,15 @@ permissions:
 
 jobs:
   deploy:
-    uses: ./.github/workflows/_shared-aca-terraform.yml
+    uses: ./.github/workflows/_shared-terraform-planapply.yml
     with:
-      environment:               production
-      working_directory:         infra/production
+      environment:               staging
+      working_directory:         infra/staging
       tf_version:                "1.8.0"
       destroy:                   false
       tf_state_storage_account:  myapiterraformstate
       tf_state_container:        tfstate
-      tf_state_key:              production/api.tfstate
+      tf_state_key:              staging/api.tfstate
       apply_branch:              main
     secrets:
       AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}

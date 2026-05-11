@@ -25,7 +25,7 @@
 #   environment to prevent a rollback and a deploy running simultaneously.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Rollback API Container Revision
+name: App - Rollback
 
 on:
   workflow_dispatch:
