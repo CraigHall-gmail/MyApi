@@ -42,7 +42,7 @@
 #   pre-emptively. The caller's concurrency group prevents concurrent runs.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Shared – Azure Terraform Plan/Apply
+name: _Shared – Terraform (Plan & Apply)
 
 on:
   workflow_call:

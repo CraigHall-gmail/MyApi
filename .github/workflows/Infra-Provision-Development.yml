@@ -44,7 +44,7 @@
 #   an explicit manual trigger to prevent accidental infrastructure deletion.
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Azure Provision - Development - Terraform
+name: Infra - Provision - Development
 
 on:
   push:
@@ -68,7 +68,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: ./.github/workflows/_shared-aca-terraform.yml
+    uses: ./.github/workflows/_shared-terraform-planapply.yml
     with:
       environment:               development
       working_directory:         infra/development

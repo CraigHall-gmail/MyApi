@@ -28,7 +28,7 @@
 #   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Scheduled – Infrastructure Drift Check
+name: Infra - Drift (Scheduled)
 
 on:
   schedule:

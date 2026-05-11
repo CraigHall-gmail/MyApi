@@ -35,7 +35,7 @@
 #   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: Shared – Blue/Green Deploy to Container Apps
+name: _Shared – CD (Blue/Green Deploy)
 
 on:
   workflow_call:
@@ -87,7 +87,7 @@ concurrency:
 jobs:
   # ── Job 1: Apply EF migrations before any new revision starts ────────────
   migrate:
-    uses: ./.github/workflows/ef-migrate.yml
+    uses: ./.github/workflows/app-EF-Migrate.yml
     permissions:
       id-token: write
       contents: read

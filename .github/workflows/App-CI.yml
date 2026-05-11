@@ -31,7 +31,7 @@
 #   SONAR_TOKEN
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: CI – Build, Test & Deploy
+name: App - CI (Build, Test & Deploy)
 
 on:
   push:

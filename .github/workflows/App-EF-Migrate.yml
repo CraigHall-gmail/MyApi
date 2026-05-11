@@ -23,7 +23,7 @@
 #   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 # ══════════════════════════════════════════════════════════════════════════════
 
-name: EF – Database Migrations
+name: App - EF Migrations
 
 on:
   workflow_call:
