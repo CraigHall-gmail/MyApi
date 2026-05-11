@@ -21,6 +21,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 name: Infra - Provision - Manual
+run-name: "Infra - Provision - ${{ inputs.environment }}${{ inputs.destroy && ' · destroy' || '' }}"
 
 on:
   workflow_dispatch:
