@@ -17,3 +17,10 @@ tags = {
   environment = "dev"
   managed_by  = "terraform"
 }
+
+# PostgreSQL — pg_admin_password is supplied via TF_VAR_pg_admin_password (GitHub Secret)
+# Key Vault names must be globally unique across Azure; adjust if taken.
+pg_server_name    = "psql-myapi-dev"
+pg_key_vault_name = "kv-myapi-dev"
+pg_sku_name       = "B_Standard_B1ms"
+pg_storage_mb     = 32768

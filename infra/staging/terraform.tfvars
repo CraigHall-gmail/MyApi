@@ -17,3 +17,9 @@ tags = {
   environment = "staging"
   managed_by  = "terraform"
 }
+
+# PostgreSQL — pg_admin_password is supplied via TF_VAR_pg_admin_password (GitHub Secret)
+pg_server_name    = "psql-myapi-stg"
+pg_key_vault_name = "kv-myapi-stg"
+pg_sku_name       = "B_Standard_B2ms"
+pg_storage_mb     = 32768

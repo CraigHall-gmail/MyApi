@@ -63,3 +63,43 @@ variable "max_replicas" {
   description = "Maximum number of replicas"
   default     = 10
 }
+
+variable "aspnetcore_environment" {
+  type        = string
+  description = "ASPNETCORE_ENVIRONMENT injected into the container"
+  default     = "Production"
+}
+
+variable "pg_server_name" {
+  type        = string
+  description = "Name of the PostgreSQL Flexible Server (globally unique)"
+}
+
+variable "pg_key_vault_name" {
+  type        = string
+  description = "Name of the Key Vault (globally unique, 3–24 chars)"
+}
+
+variable "pg_admin_password" {
+  type        = string
+  sensitive   = true
+  description = "PostgreSQL admin password — injected via TF_VAR_pg_admin_password in CI"
+}
+
+variable "pg_sku_name" {
+  type        = string
+  description = "PostgreSQL SKU (e.g. GP_Standard_D2s_v3)"
+  default     = "GP_Standard_D2s_v3"
+}
+
+variable "pg_storage_mb" {
+  type        = number
+  description = "PostgreSQL storage in MB"
+  default     = 65536
+}
+
+variable "pg_backup_retention_days" {
+  type        = number
+  description = "PostgreSQL backup retention in days"
+  default     = 14
+}

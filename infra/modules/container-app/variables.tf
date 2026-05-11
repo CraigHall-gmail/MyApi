@@ -87,3 +87,9 @@ variable "http_scale_concurrent_requests" {
   description = "Concurrent HTTP requests threshold that triggers a scale-out"
   default     = "100"
 }
+
+variable "aspnetcore_environment" {
+  type        = string
+  description = "ASPNETCORE_ENVIRONMENT value (Development | Staging | Production)"
+  default     = "Production"
+}

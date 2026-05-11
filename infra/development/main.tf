@@ -82,8 +82,39 @@ module "api_app" {
   acr_resource_group  = var.acr_resource_group
   tags                = var.tags
 
-  cpu          = var.cpu
-  memory       = var.memory
-  min_replicas = var.min_replicas
-  max_replicas = var.max_replicas
+  cpu                    = var.cpu
+  memory                 = var.memory
+  min_replicas           = var.min_replicas
+  max_replicas           = var.max_replicas
+  aspnetcore_environment = var.aspnetcore_environment
+}
+
+module "postgres" {
+  source = "../modules/postgres"
+
+  server_name         = var.pg_server_name
+  resource_group_name = module.environment.resource_group_name
+  location            = module.environment.location
+  admin_password      = var.pg_admin_password
+  sku_name            = var.pg_sku_name
+  storage_mb          = var.pg_storage_mb
+  tags                = var.tags
+}
+
+module "key_vault" {
+  source = "../modules/key-vault"
+
+  key_vault_name      = var.pg_key_vault_name
+  resource_group_name = module.environment.resource_group_name
+  location            = module.environment.location
+  secret_value        = module.postgres.connection_string
+  tags                = var.tags
+}
+
+# Grant the ACA managed identity read access to the Key Vault so it can be
+# used by the CD pipeline and migration workflow to fetch the connection string.
+resource "azurerm_role_assignment" "kv_aca_secrets_user" {
+  scope                = module.key_vault.key_vault_id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = module.api_app.identity_principal_id
 }
