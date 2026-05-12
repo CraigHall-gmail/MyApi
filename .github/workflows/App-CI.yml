@@ -61,6 +61,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write  # SonarCloud PR decoration
+      checks: write         # dorny/test-reporter
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -96,30 +97,31 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.qualitygate.wait=true \
             /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
-            /d:sonar.cs.cobertura.reportPaths="**/TestResults/**/coverage.cobertura.xml" \
-            /d:sonar.cs.vstest.reportsPaths="**/*.trx"
+            /d:sonar.cs.cobertura.reportPaths="test-results/**/coverage.cobertura.xml" \
+            /d:sonar.cs.vstest.reportsPaths="test-results/*.trx"
 
       - name: Build
         run: dotnet build --no-restore -c Release
 
       - name: Test
-        run: dotnet test --no-build -c Release --logger trx --collect:"XPlat Code Coverage"
+        run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --results-directory ./test-results
 
       - name: List coverage files
         if: always()
-        run: find . -name "coverage.cobertura.xml" | sort
+        run: find ./test-results -name "coverage.cobertura.xml" | sort
 
       - name: SonarCloud End
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
 
-      - name: Publish test results
+      - name: Publish Unit Test Results
+        uses: dorny/test-reporter@v1
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: test-results
-          path: '**/*.trx'
+          name: Unit Tests
+          path: ./test-results/*.trx
+          reporter: dotnet-trx
 
   # ── Job 2: Build & Push ───────────────────────────────────────────────────
   # Skipped on pull requests. Uses the environment matching the branch so OIDC
