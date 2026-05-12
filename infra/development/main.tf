@@ -24,42 +24,6 @@ provider "azurerm" {
 
 data "azurerm_client_config" "current" {}
 
-import {
-  to = module.api_app.azurerm_container_app.api
-  id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group}/providers/Microsoft.App/containerApps/${var.app_name}"
-}
-
-# ── State migrations: flat layout → modules ────────────────────────────────────
-moved {
-  from = azurerm_resource_group.this
-  to   = module.environment.azurerm_resource_group.this
-}
-
-moved {
-  from = azurerm_log_analytics_workspace.this
-  to   = module.environment.azurerm_log_analytics_workspace.this
-}
-
-moved {
-  from = azurerm_container_app_environment.this
-  to   = module.environment.azurerm_container_app_environment.this
-}
-
-moved {
-  from = azurerm_user_assigned_identity.api
-  to   = module.api_app.azurerm_user_assigned_identity.api
-}
-
-moved {
-  from = azurerm_role_assignment.acr_pull
-  to   = module.api_app.azurerm_role_assignment.acr_pull
-}
-
-moved {
-  from = azurerm_container_app.api
-  to   = module.api_app.azurerm_container_app.api
-}
-
 # ── Modules ────────────────────────────────────────────────────────────────────
 module "environment" {
   source = "../modules/app-environment"

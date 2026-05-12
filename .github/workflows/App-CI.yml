@@ -61,8 +61,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: write  # SonarCloud PR decoration
+      checks: write         # dorny/test-reporter
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0  # Full history required for SonarCloud blame data and new-code detection
 
       - name: Setup .NET
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
@@ -76,30 +79,49 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
 
+      - name: Install SonarScanner for .NET
+        run: dotnet tool install --global dotnet-sonarscanner
+
       - name: Restore
         run: dotnet restore
+
+      - name: SonarCloud Begin
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet sonarscanner begin \
+            /k:"CraigHall-gmail_MyApi" \
+            /o:"craighall-gmail" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.qualitygate.wait=true \
+            /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
+            /d:sonar.cs.cobertura.reportPaths="test-results/**/coverage.cobertura.xml" \
+            /d:sonar.cs.vstest.reportsPaths="test-results/*.trx"
 
       - name: Build
         run: dotnet build --no-restore -c Release
 
       - name: Test
-        run: dotnet test --no-build -c Release --logger trx
+        run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --results-directory ./test-results
 
-      - name: Analyze with SonarCloud
-        uses: SonarSource/sonarqube-scan-action@59db25f34e16620e48ab4bb9e4a5dce155cb5432 # v8.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
-        with:
-          projectBaseDir: .
-
-      - name: Publish test results
+      - name: List coverage files
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        run: find ./test-results -name "coverage.cobertura.xml" | sort
+
+      - name: SonarCloud End
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+      - name: Publish Unit Test Results
+        uses: dorny/test-reporter@3eeb9fc888e82e8be2fb356bbeec2750231672bc # v1
+        if: always()
         with:
-          name: test-results
-          path: '**/*.trx'
+          name: Unit Tests
+          path: ./test-results/*.trx
+          reporter: dotnet-trx
 
   # ── Job 2: Build & Push ───────────────────────────────────────────────────
   # Skipped on pull requests. Uses the environment matching the branch so OIDC
@@ -169,6 +191,7 @@ jobs:
     uses: ./.github/workflows/_shared-cd.yml
     with:
       environment:    development
+      app_name:       myapi-dev
       image_sha:      ${{ needs.build-push.outputs.image-tag }}
       version:        ${{ needs.build-push.outputs.version }}
       resource_group: rg-myapi-dev
@@ -189,6 +212,7 @@ jobs:
     uses: ./.github/workflows/_shared-cd.yml
     with:
       environment:    staging
+      app_name:       myapi-stg
       image_sha:      ${{ needs.build-push.outputs.image-tag }}
       version:        ${{ needs.build-push.outputs.version }}
       resource_group: rg-myapi-staging
