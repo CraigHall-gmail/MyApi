@@ -65,6 +65,11 @@ on:
         type: string
         default: acrimagereg
         description: "Azure Container Registry name"
+      image_name:
+        required: false
+        type: string
+        default: myapi
+        description: "Image repository name in ACR (may differ from app_name)"
       key_vault_name:
         required: true
         type: string
@@ -115,6 +120,7 @@ jobs:
       APP_NAME:          ${{ inputs.app_name }}
       RESOURCE_GROUP:    ${{ inputs.resource_group }}
       ACR_NAME:          ${{ inputs.acr_name }}
+      IMAGE_NAME:        ${{ inputs.image_name }}
       KEY_VAULT_NAME:    ${{ inputs.key_vault_name }}
 
     steps:
@@ -160,7 +166,7 @@ jobs:
           az containerapp update \
             --name      "$APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
-            --image     "$ACR_NAME.azurecr.io/$APP_NAME:${SHA}" \
+            --image     "$ACR_NAME.azurecr.io/$IMAGE_NAME:${SHA}" \
             --revision-suffix "$REVISION_SUFFIX" \
             --set-env-vars "REVISION_LABEL=${REVISION_SUFFIX}" \
             --set-env-vars "ASPNETCORE_ENVIRONMENT=${ASPNET_ENV}" \
