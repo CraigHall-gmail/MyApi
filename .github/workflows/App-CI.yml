@@ -95,7 +95,7 @@ jobs:
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.qualitygate.wait=true \
-            /d:sonar.tests="Tests" \
+            /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
             /d:sonar.cs.cobertura.reportPaths="**/TestResults/**/coverage.cobertura.xml" \
             /d:sonar.cs.vstest.reportsPaths="**/*.trx"
 
