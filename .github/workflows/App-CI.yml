@@ -83,7 +83,7 @@ jobs:
         run: dotnet build --no-restore -c Release
 
       - name: Test
-        run: dotnet test --no-build -c Release --logger trx
+        run: dotnet test --no-build -c Release --logger trx --collect:"XPlat Code Coverage"
 
       - name: Analyze with SonarCloud
         uses: SonarSource/sonarqube-scan-action@59db25f34e16620e48ab4bb9e4a5dce155cb5432 # v8.0.0

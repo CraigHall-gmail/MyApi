@@ -79,9 +79,4 @@ app.UseSwaggerUI();
 
 await app.RunAsync();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
-
-record CreateCityRequest(string Name);
+public partial class Program { }
