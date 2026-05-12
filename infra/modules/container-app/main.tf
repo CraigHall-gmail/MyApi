@@ -104,7 +104,6 @@ resource "azurerm_container_app" "api" {
     ignore_changes = [
       template[0].container[0].image, # CD pipeline owns the image
       template[0].container[0].env,   # CD pipeline sets REVISION_LABEL
-      ingress[0].traffic_weight,      # CD pipeline manages traffic routing
     ]
   }
 
