@@ -132,7 +132,7 @@ jobs:
     needs: build-test-scan
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
-    environment: ${{ github.ref == 'refs/heads/main' && 'staging' || 'development' }}
+    #environment: ${{ github.ref == 'refs/heads/main' && 'staging' || 'development' }}
     permissions:
       id-token: write
       contents: read
