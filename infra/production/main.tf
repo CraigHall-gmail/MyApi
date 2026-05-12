@@ -22,22 +22,6 @@ provider "azurerm" {
   # Credentials injected via ARM_* env vars in GitHub Actions (OIDC)
 }
 
-# ── State migrations: flat layout → modules ────────────────────────────────────
-moved {
-  from = azurerm_resource_group.this
-  to   = module.environment.azurerm_resource_group.this
-}
-
-moved {
-  from = azurerm_log_analytics_workspace.this
-  to   = module.environment.azurerm_log_analytics_workspace.this
-}
-
-moved {
-  from = azurerm_container_app_environment.this
-  to   = module.environment.azurerm_container_app_environment.this
-}
-
 # ── Modules ────────────────────────────────────────────────────────────────────
 module "environment" {
   source = "../modules/app-environment"
