@@ -79,4 +79,3 @@ app.UseSwaggerUI();
 
 await app.RunAsync();
 
-public partial class Program { }
