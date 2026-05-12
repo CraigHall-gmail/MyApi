@@ -5,7 +5,7 @@ location       = "southafricanorth"
 
 acr_name           = "acrimagereg"
 acr_resource_group = "Playground"
-app_name           = "myapi"
+app_name           = "myapi-dev"
 
 cpu          = 0.25
 memory       = "0.5Gi"

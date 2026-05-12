@@ -169,6 +169,7 @@ jobs:
     uses: ./.github/workflows/_shared-cd.yml
     with:
       environment:    development
+      app_name:       myapi-dev
       image_sha:      ${{ needs.build-push.outputs.image-tag }}
       version:        ${{ needs.build-push.outputs.version }}
       resource_group: rg-myapi-dev
@@ -189,6 +190,7 @@ jobs:
     uses: ./.github/workflows/_shared-cd.yml
     with:
       environment:    staging
+      app_name:       myapi-stg
       image_sha:      ${{ needs.build-push.outputs.image-tag }}
       version:        ${{ needs.build-push.outputs.version }}
       resource_group: rg-myapi-staging
