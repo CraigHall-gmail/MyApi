@@ -93,7 +93,10 @@ jobs:
             /k:"CraigHall-gmail_MyApi" \
             /o:"craighall-gmail" \
             /d:sonar.token="$SONAR_TOKEN" \
-            /d:sonar.host.url="https://sonarcloud.io"
+            /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.qualitygate.wait=true \
+            /d:sonar.cs.cobertura.reportPaths="**/TestResults/**/coverage.cobertura.xml" \
+            /d:sonar.cs.vstest.reportsPaths="**/*.trx"
 
       - name: Build
         run: dotnet build --no-restore -c Release
