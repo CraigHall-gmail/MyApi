@@ -95,6 +95,7 @@ jobs:
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.qualitygate.wait=true \
+            /d:sonar.tests="Tests" \
             /d:sonar.cs.cobertura.reportPaths="**/TestResults/**/coverage.cobertura.xml" \
             /d:sonar.cs.vstest.reportsPaths="**/*.trx"
 
@@ -103,6 +104,10 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build -c Release --logger trx --collect:"XPlat Code Coverage"
+
+      - name: List coverage files
+        if: always()
+        run: find . -name "coverage.cobertura.xml" | sort
 
       - name: SonarCloud End
         env:
