@@ -8,11 +8,7 @@
 #   which handles init, plan, and apply.
 #
 # Triggers:
-#   • push → development  (only when files under infra/development/** change)
-#   • pull_request → development  (plan only — no apply; posts plan to PR)
-#
-# Manual runs:
-#   Use Infra-Provision-Manual.yml (workflow_dispatch) to target this environment manually.
+#   • workflow_dispatch only — must be triggered manually from the Actions tab.
 #
 # Separation from CI/CD:
 #   App-CI.yml excludes infra/** via paths-ignore, and this workflow
@@ -46,14 +42,7 @@
 name: Infra - Provision - Development
 
 on:
-  push:
-    branches: [development]
-    paths:
-      - 'infra/development/**'
-  pull_request:
-    branches: [development]
-    paths:
-      - 'infra/development/**'
+  workflow_dispatch:
 
 # Serialises Terraform runs per environment to prevent concurrent state modifications.
 concurrency:

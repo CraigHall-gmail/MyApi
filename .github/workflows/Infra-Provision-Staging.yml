@@ -8,11 +8,7 @@
 #   init, plan, and apply.
 #
 # Triggers:
-#   • push → main  (only when files under infra/staging/** change)
-#   • pull_request → main  (plan only — no apply; posts plan to PR)
-#
-# Manual runs:
-#   Use Infra-Provision-Manual.yml (workflow_dispatch) to target this environment manually.
+#   • workflow_dispatch only — must be triggered manually from the Actions tab.
 #
 # Plan vs Apply:
 #   • pull_request  → plan output posted as a PR comment; no apply
@@ -27,14 +23,7 @@
 name: Infra - Provision - Staging
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'infra/staging/**'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'infra/staging/**'
+  workflow_dispatch:
 
 concurrency:
   group: terraform-staging
