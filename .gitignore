@@ -22,6 +22,9 @@ packages/
 .DS_Store
 Thumbs.db
 
+# Claude
+.claude/
+
 # Terraform
 **/.terraform/
 *.tfstate
