@@ -19,7 +19,8 @@
       "Bash(Select-String --line-buffered \"Now listening|Error|Exception|Failed|Unhandled\")",
       "PowerShell(Stop-Process -Id 31708 -Force -ErrorAction SilentlyContinue)",
       "PowerShell(Get-Process -Name MyApi -ErrorAction SilentlyContinue)",
-      "PowerShell(Stop-Process -Force)"
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(gh run list --workflow=\"Infra-Drift-Scheduled.yml\" --status=in_progress --limit=5)"
     ]
   }
 }
