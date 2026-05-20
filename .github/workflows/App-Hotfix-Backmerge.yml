@@ -49,8 +49,10 @@ jobs:
 
       - name: Create back-merge branch
         id: branch
+        env:
+          HOTFIX_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          BRANCH="backmerge/${{ github.event.pull_request.head.ref }}"
+          BRANCH="backmerge/${HOTFIX_REF}"
           git checkout -b "$BRANCH"
           git push origin "$BRANCH"
           echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
@@ -58,11 +60,12 @@ jobs:
       - name: Open back-merge PR
         env:
           GH_TOKEN: ${{ github.token }}
+          HOTFIX_REF: ${{ github.event.pull_request.head.ref }}
+          HOTFIX_PR_URL: ${{ github.event.pull_request.html_url }}
+          BACKMERGE_BRANCH: ${{ steps.branch.outputs.name }}
         run: |
-          HOTFIX="${{ github.event.pull_request.head.ref }}"
-          HOTFIX_PR="${{ github.event.pull_request.html_url }}"
           gh pr create \
             --base development \
-            --head "${{ steps.branch.outputs.name }}" \
-            --title "chore: back-merge ${HOTFIX} into development" \
-            --body "Automated back-merge of \`${HOTFIX}\` into \`development\` following its merge into \`main\`.\n\nSource PR: ${HOTFIX_PR}\n\nIf there are merge conflicts, resolve them in this branch before merging."
+            --head "$BACKMERGE_BRANCH" \
+            --title "chore: back-merge ${HOTFIX_REF} into development" \
+            --body "Automated back-merge of \`${HOTFIX_REF}\` into \`development\` following its merge into \`main\`.\n\nSource PR: ${HOTFIX_PR_URL}\n\nIf there are merge conflicts, resolve them in this branch before merging."
