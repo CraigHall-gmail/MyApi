@@ -30,3 +30,5 @@ Thumbs.db
 *.tfstate
 *.tfstate.backup
 *.tfvars
+MyApi.csproj.lscache
+Tests/MyApi.Tests.csproj.lscache
