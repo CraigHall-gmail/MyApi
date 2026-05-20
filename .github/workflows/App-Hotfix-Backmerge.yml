@@ -1,0 +1,68 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# App-Hotfix-Backmerge.yml  –  Hotfix Back-merge: main → development
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Purpose:
+#   When a hotfix/* branch merges into main, automatically opens a PR to
+#   back-merge those changes into development so the fix is not lost when
+#   development is next promoted to main.
+#
+# Trigger:
+#   pull_request closed (merged) targeting main, from a hotfix/* head branch
+#
+# What it does:
+#   1. Creates a backmerge/<hotfix-branch> branch from main
+#   2. Opens a PR from that branch into development
+#   3. Merge conflicts (if any) are surfaced in the PR for manual resolution
+#
+# Permissions:
+#   contents: write       — push the back-merge branch
+#   pull-requests: write  — open the PR
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: App - Hotfix Back-merge
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+jobs:
+  back-merge:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'hotfix/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create back-merge branch
+        id: branch
+        run: |
+          BRANCH="backmerge/${{ github.event.pull_request.head.ref }}"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Open back-merge PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          HOTFIX="${{ github.event.pull_request.head.ref }}"
+          HOTFIX_PR="${{ github.event.pull_request.html_url }}"
+          gh pr create \
+            --base development \
+            --head "${{ steps.branch.outputs.name }}" \
+            --title "chore: back-merge ${HOTFIX} into development" \
+            --body "Automated back-merge of \`${HOTFIX}\` into \`development\` following its merge into \`main\`.\n\nSource PR: ${HOTFIX_PR}\n\nIf there are merge conflicts, resolve them in this branch before merging."

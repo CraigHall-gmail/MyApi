@@ -7,7 +7,13 @@
 #   push/PR, builds and pushes the Docker image on merge, then deploys to
 #   the environment that matches the branch.
 #
+# Branching strategy:
+#   feature/*  →  PR targets development  →  merge to development
+#   hotfix/*   →  PR targets main         →  merge to main
+#
 # Triggers:
+#   • push → feature/**   →  test only (no build or deploy)
+#   • push → hotfix/**    →  test only (no build or deploy)
 #   • push → development  →  test → build → deploy-dev
 #   • push → main         →  test → build → deploy-staging → deploy-production
 #   • pull_request        →  test only (no build or deploy)
@@ -35,14 +41,16 @@ name: App - CI (Build, Test & Deploy)
 
 on:
   push:
-    branches: [development, main]
+    branches:
+      - development
+      - main
+      - 'feature/**'
+      - 'hotfix/**'
     paths-ignore:
-      - 'infra/**'
       - '.github/workflows/**'
   pull_request:
     branches: [development, main]
     paths-ignore:
-      - 'infra/**'
       - '.github/workflows/**'
   workflow_dispatch:
 
@@ -131,7 +139,9 @@ jobs:
   build-push:
     needs: build-test-scan
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+    if: |
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/development' || github.ref == 'refs/heads/main')
     environment: ${{ github.ref == 'refs/heads/main' && 'build' || 'development' }}
     permissions:
       id-token: write
