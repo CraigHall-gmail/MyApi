@@ -11,7 +11,8 @@ This directory contains the CI/CD workflows for the **MyApi** application, targe
 
 | File | Purpose | Triggered by |
 |---|---|---|
-| [`App-CI.yml`](App-CI.yml) | Build, test, Sonar scan, push image, deploy | Push / PR to `development` or `main` |
+| [`App-CI.yml`](App-CI.yml) | Build, test, Sonar scan, push image, deploy | Push / PR to `development`, `main`, `feature/**`, `hotfix/**` |
+| [`App-Hotfix-Backmerge.yml`](App-Hotfix-Backmerge.yml) | Open back-merge PR from `main` → `development` after a hotfix ships | `hotfix/**` merged into `main` |
 | [`App-Rollback.yml`](App-Rollback.yml) | Manually restore a previous ACA revision | Manual dispatch only |
 | [`App-EF-Migrate.yml`](App-EF-Migrate.yml) | Run EF Core migrations against target database | Called by `_shared-cd.yml` |
 | [`_shared-cd.yml`](_shared-cd.yml) | Reusable ACA blue/green deploy | Called by `App-CI.yml` |
@@ -21,36 +22,43 @@ This directory contains the CI/CD workflows for the **MyApi** application, targe
 
 ## Pipeline Architecture
 
+### Branching Strategy
+
+| Branch | PR target | CI behaviour |
+|---|---|---|
+| `feature/**` | `development` | test only — no build or deploy |
+| `hotfix/**` | `main` | test only — no build or deploy |
+| `development` | — | test → build → deploy-dev |
+| `main` | — | test → build → deploy-staging → deploy-production |
+
 ### CI/CD Flow (Application)
 
 ```
-Push to development                        Push to main
-        │                                        │
-        ▼                                        ▼
-┌───────────────────────────────────────────────────────────┐
-│                   build-test-scan                         │
-│  dotnet restore → build → test → SonarCloud scan         │
-│  upload TRX test results                                  │
-└──────────────────────┬────────────────────────────────────┘
-                       │ pass
-                       ▼
-              ┌─────────────────┐
-              │   build-push    │  az acr build → push :sha + :semver tags
-              │  (skipped PRs)  │
-              └────────┬────────┘
-            ┌──────────┴──────────┐
-            │                     │
-      development branch        main branch
-            │                     │
-            ▼                     ▼
-     ┌────────────┐      ┌──────────────────┐
-     │ deploy-dev │      │  deploy-staging  │  (auto, no gate)
-     └────────────┘      └────────┬─────────┘
-                                  │ pass
-                                  ▼
-                         ┌──────────────────────┐
-                         │  deploy-production   │  (requires manual approval
-                         └──────────────────────┘   via GitHub Environment gate)
+Push to feature/** or hotfix/**            Push to development    Push to main
+        │                                        │                     │
+        ▼                                        ▼                     ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                           build-test-scan                                     │
+│  dotnet restore → build → test → SonarCloud scan → upload TRX results        │
+└───────────────────────────────┬───────────────────────────────────────────────┘
+        │ (test only; no         │ pass (development / main only)
+        │  build on feature/     ▼
+        │  hotfix branches)  ┌─────────────────┐
+        │                    │   build-push    │  az acr build → push :sha + :semver tags
+        │                    └────────┬────────┘
+        │                  ┌──────────┴──────────┐
+        │                  │                     │
+        │            development branch        main branch
+        │                  │                     │
+        ▼                  ▼                     ▼
+      (done)        ┌────────────┐      ┌──────────────────┐
+                    │ deploy-dev │      │  deploy-staging  │  (auto, no gate)
+                    └────────────┘      └────────┬─────────┘
+                                                 │ pass
+                                                 ▼
+                                        ┌──────────────────────┐
+                                        │  deploy-production   │  (requires manual approval
+                                        └──────────────────────┘   via GitHub Environment gate)
 ```
 
 Each deploy job calls `_shared-cd.yml`, which runs a zero-downtime blue/green deployment:
@@ -76,6 +84,32 @@ Each deploy job calls `_shared-cd.yml`, which runs a zero-downtime blue/green de
 | **Promote** | Atomically shifts **100% of ingress** to the new revision |
 | **Cleanup** | Deactivates old revisions; the most recent old revision is **retained for fast rollback** |
 | **Rollback** | If steps 2–4 fail, the new revision is **deactivated automatically** — traffic never leaves the previous revision |
+
+### Hotfix Flow
+
+```
+hotfix/1.2.1 (branched from main)
+        │
+        │  push → CI runs tests only
+        │
+        ▼
+   PR → main
+        │  merged → CI builds, deploys staging → production
+        │
+        ├──► v1.2.1 git tag created automatically
+        │
+        └──► App-Hotfix-Backmerge.yml fires
+                  │
+                  ▼
+             backmerge/hotfix/1.2.1 (branch created from main)
+                  │
+                  ▼
+             PR → development  (opened automatically; resolve conflicts if any)
+```
+
+The back-merge PR must be reviewed and merged manually. If `development` has diverged, conflicts appear directly in the PR for resolution before merging.
+
+---
 
 ### Manual Rollback
 

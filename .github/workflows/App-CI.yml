@@ -7,20 +7,27 @@
 #   push/PR, builds and pushes the Docker image on merge, then deploys to
 #   the environment that matches the branch.
 #
+# Branching strategy:
+#   feature/*  →  PR targets development  →  merge to development
+#   hotfix/*   →  PR targets main         →  merge to main
+#
 # Triggers:
+#   • push → feature/**   →  test only (no build or deploy)
 #   • push → development  →  test → build → deploy-dev
+#   • push → hotfix/**    →  test → build → deploy-staging → deploy-production
 #   • push → main         →  test → build → deploy-staging → deploy-production
 #   • pull_request        →  test only (no build or deploy)
 #   • workflow_dispatch   →  test + build on whichever branch is selected
 #
 # Job flow:
-#   build-test-scan ──► build-push ──► deploy-dev          (development branch)
-#                                  └─► deploy-staging ──► deploy-production  (main branch)
+#   build-test-scan ──► build-push ──► deploy-dev                           (development branch)
+#                                  └─► deploy-staging ──► deploy-production  (main + hotfix/* branches)
 #
 # Environment / OIDC mapping:
 #   development branch  →  build-push uses environment: development
-#   main branch         →  build-push uses environment: staging
-#                          (staging service principal has AcrPush on the shared registry)
+#   main branch         →  build-push uses environment: build
+#   hotfix/* branches   →  build-push uses environment: build
+#                          (build service principal has AcrPush on the shared registry)
 #
 # Approval gate (production):
 #   Configure "Required reviewers" on the `production` GitHub Environment in
@@ -35,14 +42,16 @@ name: App - CI (Build, Test & Deploy)
 
 on:
   push:
-    branches: [development, main]
+    branches:
+      - development
+      - main
+      - 'feature/**'
+      - 'hotfix/**'
     paths-ignore:
-      - 'infra/**'
       - '.github/workflows/**'
   pull_request:
     branches: [development, main]
     paths-ignore:
-      - 'infra/**'
       - '.github/workflows/**'
   workflow_dispatch:
 
@@ -124,15 +133,20 @@ jobs:
           reporter: dotnet-trx
 
   # ── Job 2: Build & Push ───────────────────────────────────────────────────
-  # Skipped on pull requests. Uses the environment matching the branch so OIDC
-  # federation is scoped to the correct service principal.
+  # Skipped on pull requests and feature branches. Uses the environment matching
+  # the branch so OIDC federation is scoped to the correct service principal.
   #   development → environment: development
-  #   main        → environment: staging  (staging SP has AcrPush)
+  #   main        → environment: build  (build SP has AcrPush)
+  #   hotfix/*    → environment: build  (same SP — hotfix deploys independently of main)
   build-push:
     needs: build-test-scan
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    environment: ${{ github.ref == 'refs/heads/main' && 'build' || 'development' }}
+    if: |
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/development' ||
+       github.ref == 'refs/heads/main' ||
+       startsWith(github.ref, 'refs/heads/hotfix/'))
+    environment: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/')) && 'build' || 'development' }}
     permissions:
       id-token: write
       contents: read
@@ -202,10 +216,11 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
   # ── Job 4: Deploy → Staging ───────────────────────────────────────────────
-  # Runs automatically on every merge to main.
+  # Runs on main merges and hotfix branches. Hotfix deploys bypass main so a
+  # pending next-version in staging is not bundled with the emergency fix.
   deploy-staging:
     needs: build-push
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/')
     permissions:
       id-token: write
       contents: write
@@ -225,9 +240,10 @@ jobs:
   # ── Job 5: Deploy → Production ────────────────────────────────────────────
   # Runs only after staging succeeds. The `production` GitHub Environment's
   # "Required reviewers" protection rule pauses execution until approved.
+  # Applies to both main and hotfix/* branches.
   deploy-production:
     needs: [build-push, deploy-staging]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/')
     permissions:
       id-token: write
       contents: write
