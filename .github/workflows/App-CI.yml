@@ -51,8 +51,6 @@ on:
       - '.github/workflows/**'
   pull_request:
     branches: [development, main]
-    paths-ignore:
-      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -107,7 +105,7 @@ jobs:
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.branch.longLivedBranchesRegex="(main|master|development|release/.*)" \
             /d:sonar.host.url="https://sonarcloud.io" \
-            /d:sonar.qualitygate.wait=true \
+            /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }} \
             /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
             /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
 
