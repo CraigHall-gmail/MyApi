@@ -51,8 +51,6 @@ on:
       - '.github/workflows/**'
   pull_request:
     branches: [development, main]
-    paths-ignore:
-      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -88,8 +86,10 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
 
-      - name: Install SonarScanner for .NET
-        run: dotnet tool install --global dotnet-sonarscanner
+      - name: Install tools
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+          dotnet tool install --global dotnet-coverage
 
       - name: Restore
         run: dotnet restore
@@ -103,21 +103,21 @@ jobs:
             /k:"CraigHall-gmail_MyApi" \
             /o:"craighall-gmail" \
             /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.branch.longLivedBranchesRegex="(main|master|development|release/.*)" \
             /d:sonar.host.url="https://sonarcloud.io" \
-            /d:sonar.qualitygate.wait=true \
+            /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }} \
             /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
-            /d:sonar.cs.cobertura.reportPaths="test-results/**/coverage.cobertura.xml" \
-            /d:sonar.cs.vstest.reportsPaths="test-results/*.trx"
+            /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
 
       - name: Build
         run: dotnet build --no-restore -c Release
 
-      - name: Test
-        run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --results-directory ./test-results
-
-      - name: List coverage files
-        if: always()
-        run: find ./test-results -name "coverage.cobertura.xml" | sort
+      - name: Test with coverage
+        run: |
+          dotnet-coverage collect \
+            'dotnet test --no-build -c Release --logger "trx;LogFileName=test-results.trx" --results-directory ./test-results' \
+            -f xml \
+            -o coverage.xml
 
       - name: SonarCloud End
         env:
@@ -152,21 +152,23 @@ jobs:
       contents: read
     outputs:
       image-tag: ${{ steps.meta.outputs.tag }}
-      version:   ${{ steps.semver.outputs.version }}
+      version:   ${{ steps.gitversion.outputs.semVer }}
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0  # GitVersion requires full history
 
-      - name: Read semantic version from project
-        id: semver
-        run: |
-          VERSION=$(grep -oP '(?<=<Version>)[^<]+' MyApi.csproj | head -1)
-          if [ -z "$VERSION" ]; then
-            echo "::error::No <Version> element found in MyApi.csproj"
-            exit 1
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Semantic version: $VERSION"
+      - name: Setup GitVersion
+        uses: gittools/actions/gitversion/setup@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3.2.1
+        with:
+          versionSpec: '5.x'
+
+      - name: Determine version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3.2.1
+        with:
+          useConfigFile: true
 
       - name: Azure login (OIDC)
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
@@ -187,13 +189,14 @@ jobs:
           az acr build \
             --registry ${{ env.ACR_NAME }} \
             --image ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }} \
-            --image ${{ env.IMAGE_NAME }}:${{ steps.semver.outputs.version }} \
+            --image ${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }} \
+            --build-arg VERSION=${{ steps.gitversion.outputs.semVer }} \
             .
 
       - name: Output image references
         run: |
           echo "SHA tag   : ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}"
-          echo "Semver tag: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.semver.outputs.version }}"
+          echo "Semver tag: ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }}"
 
   # ── Job 3: Deploy → Development ──────────────────────────────────────────
   deploy-dev:

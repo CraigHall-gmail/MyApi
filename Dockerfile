@@ -8,10 +8,13 @@ RUN dotnet restore "MyApi.csproj"
 
 # Copy everything else and publish
 COPY . .
+ARG VERSION=0.0.0
 RUN dotnet publish "MyApi.csproj" \
     -c Release \
     -o /app/publish \
-    --no-restore
+    --no-restore \
+    -p:Version=$VERSION \
+    -p:InformationalVersion=$VERSION
 
 # ── Stage 2: Runtime image ─────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
@@ -26,4 +29,4 @@ EXPOSE 8080
 
 COPY --from=build /app/publish .
 
-ENTRYPOINT ["dotnet", "MyApi.dll"]
+ENTRYPOINT ["dotnet", "MyApi.dll"] 
