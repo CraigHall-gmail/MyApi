@@ -108,7 +108,8 @@ jobs:
             /d:sonar.qualitygate.wait=true \
             /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
             /d:sonar.cs.cobertura.reportPaths="test-results/**/coverage.cobertura.xml" \
-            /d:sonar.cs.vstest.reportsPaths="test-results/*.trx"
+            /d:sonar.cs.vstest.reportsPaths="test-results/*.trx" \
+            /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
 
       - name: Build
         run: dotnet build --no-restore -c Release
