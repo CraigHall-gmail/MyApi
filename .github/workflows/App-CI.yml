@@ -115,9 +115,11 @@ jobs:
       - name: Test with coverage
         run: |
           dotnet-coverage collect \
-            'dotnet test --no-build -c Release --logger "trx;LogFileName=test-results.trx" --results-directory ./test-results' \
             -f xml \
-            -o coverage.xml
+            -o coverage.xml \
+            -- dotnet test --no-build -c Release \
+              --logger "trx;LogFileName=test-results.trx" \
+              --results-directory ./test-results
 
       - name: SonarCloud End
         env:
