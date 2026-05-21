@@ -192,6 +192,7 @@ jobs:
             --registry ${{ env.ACR_NAME }} \
             --image ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }} \
             --image ${{ env.IMAGE_NAME }}:${{ steps.gitversion.outputs.semVer }} \
+            --build-arg VERSION=${{ steps.gitversion.outputs.semVer }} \
             .
 
       - name: Output image references

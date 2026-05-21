@@ -30,7 +30,7 @@ app.MapHealthChecks("/health/ready");
 
 // Version endpoint — useful for verifying which revision is live
 app.MapGet("/version", () => new {
-    version = "1.0.0",
+    version,
     revision = Environment.GetEnvironmentVariable("REVISION_LABEL") ?? "unknown",
     timestamp = DateTime.UtcNow
 });
