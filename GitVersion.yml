@@ -1,0 +1,25 @@
+tag-prefix: 'v'
+
+branches:
+  main:
+    regex: ^main$
+    tag: ''
+    increment: Patch
+    prevent-increment-of-merged-branch-version: true
+    is-mainline: true
+  development:
+    regex: ^development$
+    tag: alpha
+    increment: Minor
+    track-merge-target: true
+  feature:
+    regex: ^feature[/-]
+    tag: useBranchName
+    increment: Inherit
+    source-branches: ['development']
+  hotfix:
+    regex: ^hotfix[/-]
+    tag: ''
+    increment: Patch
+    source-branches: ['main']
+    is-release-branch: true
