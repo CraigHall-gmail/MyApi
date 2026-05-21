@@ -51,6 +51,8 @@ on:
       - '.github/workflows/**'
   pull_request:
     branches: [development, main]
+    paths-ignore:
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -86,8 +88,10 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
 
-      - name: Install SonarScanner for .NET
-        run: dotnet tool install --global dotnet-sonarscanner
+      - name: Install tools
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+          dotnet tool install --global dotnet-coverage
 
       - name: Restore
         run: dotnet restore
@@ -103,20 +107,19 @@ jobs:
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.branch.longLivedBranchesRegex="(main|master|development|release/.*)" \
             /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.qualitygate.wait=true \
             /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
-            /d:sonar.cs.cobertura.reportPaths="test-results/**/coverage.cobertura.xml" \
-            /d:sonar.cs.vstest.reportsPaths="test-results/*.trx" \
-            /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
+            /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
 
       - name: Build
         run: dotnet build --no-restore -c Release
 
-      - name: Test
-        run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --results-directory ./test-results
-
-      - name: List coverage files
-        if: always()
-        run: find ./test-results -name "coverage.cobertura.xml" | sort
+      - name: Test with coverage
+        run: |
+          dotnet-coverage collect \
+            'dotnet test --no-build -c Release --logger "trx;LogFileName=test-results.trx" --results-directory ./test-results' \
+            -f xml \
+            -o coverage.xml
 
       - name: SonarCloud End
         env:
