@@ -1,13 +1,13 @@
 tag-prefix: 'v'
 
 branches:
-  main:
+  master:
     regex: ^main$
     tag: ''
     increment: Patch
-    prevent-increment-of-merged-branch-version: true
     is-mainline: true
-  development:
+    prevent-increment-of-merged-branch-version: true
+  develop:
     regex: ^development$
     tag: alpha
     increment: Minor
@@ -16,10 +16,8 @@ branches:
     regex: ^feature[/-]
     tag: useBranchName
     increment: Inherit
-    source-branches: ['development']
   hotfix:
     regex: ^hotfix[/-]
     tag: ''
     increment: Patch
-    source-branches: ['main']
     is-release-branch: true
