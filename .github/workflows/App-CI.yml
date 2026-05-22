@@ -107,7 +107,7 @@ jobs:
             /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }} \
             /d:sonar.coverage.exclusions="Data/**,Models/**" \
             /d:sonar.exclusions=".github/**,.vscode/**,**/appsettings*.json,Dockerfile" \
-            /d:sonar.cs.cobertura.reportPaths=coverage.cobertura.xml
+            /d:sonar.cs.cobertura.reportPaths="${GITHUB_WORKSPACE}/coverage.cobertura.xml"
 
       - name: Build
         run: dotnet build --no-restore -c Release
