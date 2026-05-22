@@ -109,8 +109,9 @@ jobs:
             /d:sonar.coverage.exclusions="Data/**,Models/**" \
             /d:sonar.exclusions=".github/**,.vscode/**,**/appsettings*.json,Dockerfile" \
             /d:sonar.cs.cobertura.reportPaths="${GITHUB_WORKSPACE}/coverage.cobertura.xml"
-            
+
       - name: Debug Sonar config
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
         run: cat .sonarqube/conf/SonarQubeAnalysisConfig.xml
 
       - name: Build
