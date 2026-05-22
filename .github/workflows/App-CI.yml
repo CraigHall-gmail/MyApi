@@ -100,23 +100,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           COVERAGE_PATH="${GITHUB_WORKSPACE}/coverage.cobertura.xml"
-    
+          echo "Coverage path: $COVERAGE_PATH"
+
           dotnet sonarscanner begin \
             /k:"CraigHall-gmail_MyApi" \
             /o:"craighall-gmail" \
             /d:sonar.token="$SONAR_TOKEN" \
-            /d:sonar.branch.longLivedBranchesRegex="(main|master|development|release/.*)" \
             /d:sonar.host.url="https://sonarcloud.io" \
-            /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }} \
+            /d:sonar.branch.longLivedBranchesRegex="(main|master|development|release/.*)" \
+            /d:sonar.qualitygate.wait=true \
             /d:sonar.coverage.exclusions="Data/**,Models/**" \
             /d:sonar.exclusions=".github/**,.vscode/**,**/appsettings*.json,Dockerfile" \
             /d:sonar.cs.cobertura.reportPaths="$COVERAGE_PATH"
-
+      
       - name: Debug Sonar config
         if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
         run: |
-            ls .sonarqube/conf/
-            cat .sonarqube/conf/sonar-scanner.properties 2>/dev/null || echo "no sonar-scanner.properties"
+            echo "=== sonar-scanner.properties ==="
+            cat .sonarqube/conf/sonar-scanner.properties
 
       - name: Build
         run: dotnet build --no-restore -c Release
@@ -137,6 +138,11 @@ jobs:
           ls -la "$GITHUB_WORKSPACE/coverage.cobertura.xml" 2>/dev/null || echo "FILE NOT FOUND"
           find . -name "coverage.cobertura.xml" 2>/dev/null
       
+      - name: Debug proto coverage reference
+        run: |
+          grep -r "cobertura\|coverage" .sonarqube/out/ --include="*.xml" -l 2>/dev/null || echo "No coverage refs in proto output"
+          find .sonarqube/out -name "*.xml" | head -10
+              
       - name: Verify coverage file is readable
         run: |
           echo "=== File check ==="
