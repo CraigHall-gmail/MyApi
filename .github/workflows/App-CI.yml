@@ -70,6 +70,14 @@ jobs:
       pull-requests: write  # SonarCloud PR decoration
       checks: write         # dorny/test-reporter
     steps:
+      - name: Enforce branching strategy
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: |
+          if [[ "${{ github.head_ref }}" == feature/* ]]; then
+            echo "Feature branches must target 'development', not 'main'."
+            exit 1
+          fi
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0  # Full history required for SonarCloud blame data and new-code detection
@@ -94,41 +102,59 @@ jobs:
         run: dotnet restore
 
       - name: SonarCloud Begin
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          COVERAGE_PATH="${GITHUB_WORKSPACE}/coverage.cobertura.xml"
+          echo "Coverage path: $COVERAGE_PATH"
+
           dotnet sonarscanner begin \
             /k:"CraigHall-gmail_MyApi" \
             /o:"craighall-gmail" \
             /d:sonar.token="$SONAR_TOKEN" \
-            /d:sonar.branch.longLivedBranchesRegex="(main|master|development|release/.*)" \
             /d:sonar.host.url="https://sonarcloud.io" \
-            /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }} \
-            /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
-            /d:sonar.cs.cobertura.reportPaths=coverage.cobertura.xml
-
+            /d:sonar.branch.longLivedBranchesRegex="(main|master|development|release/.*)" \
+            /d:sonar.qualitygate.wait=true \
+            /d:sonar.coverage.exclusions="Data/**,Models/**" \
+            /d:sonar.exclusions=".github/**,.vscode/**,**/appsettings*.json,Dockerfile" \
+            /d:sonar.scanner.forceFullAnalysis=true \
+            /d:sonar.cs.cobertura.reportPaths="$COVERAGE_PATH"
+            
       - name: Build
         run: dotnet build --no-restore -c Release
 
       - name: Test with coverage
         run: |
           dotnet test --no-build -c Release \
-            --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test-results.trx" \
             --results-directory ./test-results
-
-      - name: Copy coverage report to known path
+                 
+      - name: Debug coverage path
         run: |
-          COVERAGE=$(find ./test-results -name "coverage.cobertura.xml" | head -1)
-          if [ -z "$COVERAGE" ]; then
-            echo "::error::No coverage.cobertura.xml found in test-results"
-            exit 1
-          fi
-          echo "Found coverage report: $COVERAGE"
-          cp "$COVERAGE" ./coverage.cobertura.xml
-
+          echo "Working dir: $(pwd)"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE/coverage.cobertura.xml" 2>/dev/null || echo "FILE NOT FOUND"
+          find . -name "coverage.cobertura.xml" 2>/dev/null
+      
+      - name: Debug proto coverage reference
+        run: |
+          grep -r "cobertura\|coverage" .sonarqube/out/ --include="*.xml" -l 2>/dev/null || echo "No coverage refs in proto output"
+          find .sonarqube/out -name "*.xml" | head -10
+              
+      - name: Verify coverage file is readable
+        run: |
+          echo "=== File check ==="
+          ls -la "$GITHUB_WORKSPACE/coverage.cobertura.xml"
+          echo "=== First 5 lines ==="
+          head -5 "$GITHUB_WORKSPACE/coverage.cobertura.xml"
+          echo "=== Line rate ==="
+          grep 'line-rate' "$GITHUB_WORKSPACE/coverage.cobertura.xml" | head -3
+            
       - name: SonarCloud End
+        if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
+        continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"

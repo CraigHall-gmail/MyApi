@@ -69,6 +69,35 @@ public class CityEndpointsTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
+    public async Task DeleteCity_ExistingId_Returns204NoContent()
+    {
+        var post = await _client.PostAsJsonAsync("/cities", new CreateCityRequest("Vienna"));
+        var city = await post.Content.ReadFromJsonAsync<City>();
+
+        var response = await _client.DeleteAsync($"/cities/{city!.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteCity_NonExistentId_Returns404NotFound()
+    {
+        var response = await _client.DeleteAsync("/cities/999999");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteCity_RemovesCity_FromSubsequentGetList()
+    {
+        var post = await _client.PostAsJsonAsync("/cities", new CreateCityRequest("Lisbon"));
+        var city = await post.Content.ReadFromJsonAsync<City>();
+
+        await _client.DeleteAsync($"/cities/{city!.Id}");
+
+        var cities = await _client.GetFromJsonAsync<List<City>>("/cities");
+        Assert.DoesNotContain(cities!, c => c.Id == city.Id);
+    }
+
+    [Fact]
     public async Task SearchCities_MissingQuery_Returns400BadRequest()
     {
         var response = await _client.GetAsync("/cities/search");
