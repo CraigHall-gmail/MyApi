@@ -111,6 +111,7 @@ jobs:
             /d:sonar.qualitygate.wait=true \
             /d:sonar.coverage.exclusions="Data/**,Models/**" \
             /d:sonar.exclusions=".github/**,.vscode/**,**/appsettings*.json,Dockerfile" \
+            /d:sonar.scanner.forceFullAnalysis=true \
             /d:sonar.cs.cobertura.reportPaths="$COVERAGE_PATH"
       
       - name: Debug Sonar config
