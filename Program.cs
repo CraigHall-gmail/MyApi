@@ -74,6 +74,19 @@ app.MapGet("/cities", async (AppDbContext db) =>
 .WithName("GetCities")
 .WithTags("Cities");
 
+app.MapDelete("/cities/{id}", async (int id, AppDbContext db) =>
+{
+    var city = await db.Cities.FindAsync(id);
+    if (city is null)
+        return Results.NotFound();
+
+    db.Cities.Remove(city);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+.WithName("DeleteCity")
+.WithTags("Cities");
+
 app.MapGet("/cities/search", async (string? q, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(q))
