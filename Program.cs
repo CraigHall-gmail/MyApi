@@ -74,6 +74,19 @@ app.MapGet("/cities", async (AppDbContext db) =>
 .WithName("GetCities")
 .WithTags("Cities");
 
+app.MapGet("/cities/search", async (string? q, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(q))
+        return Results.BadRequest("Query parameter 'q' is required.");
+
+    var term = q.Trim();
+    var all = await db.Cities.OrderBy(c => c.Name).ToListAsync();
+    var results = all.Where(c => c.Name.Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+    return Results.Ok(results);
+})
+.WithName("SearchCities")
+.WithTags("Cities");
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
