@@ -106,7 +106,7 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }} \
             /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
-            /d:sonar.cs.cobertura.reportPaths="test-results/**/coverage.cobertura.xml"
+            /d:sonar.cs.cobertura.reportPaths=coverage.cobertura.xml
 
       - name: Build
         run: dotnet build --no-restore -c Release
@@ -117,6 +117,16 @@ jobs:
             --collect:"XPlat Code Coverage" \
             --logger "trx;LogFileName=test-results.trx" \
             --results-directory ./test-results
+
+      - name: Copy coverage report to known path
+        run: |
+          COVERAGE=$(find ./test-results -name "coverage.cobertura.xml" | head -1)
+          if [ -z "$COVERAGE" ]; then
+            echo "::error::No coverage.cobertura.xml found in test-results"
+            exit 1
+          fi
+          echo "Found coverage report: $COVERAGE"
+          cp "$COVERAGE" ./coverage.cobertura.xml
 
       - name: SonarCloud End
         env:

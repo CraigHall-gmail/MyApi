@@ -14,6 +14,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
 
+        // Capture the name outside the lambda so all requests within one factory share the same DB.
+        // With EF Core 9+, the options config lambda runs per-scope; a Guid inside it would give
+        // each request a fresh empty database, breaking cross-request persistence tests.
+        var dbName = "TestDb_" + Guid.NewGuid();
+
         builder.ConfigureTestServices(services =>
         {
             // EF Core 9+ stores the config action as IDbContextOptionsConfiguration<T> separately
@@ -26,7 +31,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             foreach (var d in toRemove) services.Remove(d);
 
             services.AddDbContext<AppDbContext>(options =>
-                options.UseInMemoryDatabase("TestDb_" + Guid.NewGuid()));
+                options.UseInMemoryDatabase(dbName));
         });
     }
 }
