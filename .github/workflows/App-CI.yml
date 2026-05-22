@@ -139,7 +139,14 @@ jobs:
           fi
           echo "Found coverage report: $COVERAGE"
           cp "$COVERAGE" ./coverage.cobertura.xml
-
+      
+      - name: Debug coverage path
+        run: |
+          echo "Working dir: $(pwd)"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE/coverage.cobertura.xml" 2>/dev/null || echo "FILE NOT FOUND"
+          find . -name "coverage.cobertura.xml" 2>/dev/null
+    
       - name: SonarCloud End
         if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
         env:
