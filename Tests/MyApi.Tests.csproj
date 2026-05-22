@@ -22,4 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MyApi.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.msbuild" Version="6.*" />
+  </ItemGroup>
 </Project>
