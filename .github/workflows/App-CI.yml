@@ -154,6 +154,18 @@ jobs:
           head -5 "$GITHUB_WORKSPACE/coverage.cobertura.xml"
           echo "=== Line rate ==="
           grep 'line-rate' "$GITHUB_WORKSPACE/coverage.cobertura.xml" | head -3
+      
+      - name: Debug pre-end state
+        if: always()
+        run: |
+          echo "=== Coverage file ==="
+          ls -la coverage.cobertura.xml 2>/dev/null || echo "MISSING"
+          
+          echo "=== SonarQubeAnalysisConfig AdditionalConfig ==="
+          grep -A 50 "AdditionalConfig" .sonarqube/conf/SonarQubeAnalysisConfig.xml
+          
+          echo "=== Coverage refs in proto output ==="
+          grep -ri "cobertura\|CoverletOutput\|reportPath" .sonarqube/ 2>/dev/null || echo "NONE FOUND"
               
       - name: SonarCloud End
         if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
