@@ -108,11 +108,13 @@ jobs:
             /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }} \
             /d:sonar.coverage.exclusions="Data/**,Models/**" \
             /d:sonar.exclusions=".github/**,.vscode/**,**/appsettings*.json,Dockerfile" \
-            /d:sonar.cs.cobertura.reportPaths="${GITHUB_WORKSPACE}/coverage.cobertura.xml"
+            /d:sonar.cs.cobertura.reportPaths="coverage.cobertura.xml"
 
       - name: Debug Sonar config
         if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
-        run: cat .sonarqube/conf/SonarQubeAnalysisConfig.xml
+        run: |
+            ls .sonarqube/conf/
+            cat .sonarqube/conf/sonar-scanner.properties 2>/dev/null || echo "no sonar-scanner.properties"
 
       - name: Build
         run: dotnet build --no-restore -c Release
@@ -133,17 +135,7 @@ jobs:
           fi
           echo "Found: $COVERAGE"
           cp "$COVERAGE" ./coverage.cobertura.xml
-            
-      - name: Copy coverage report to known path
-        run: |
-          COVERAGE=$(find ./test-results -name "coverage.cobertura.xml" | head -1)
-          if [ -z "$COVERAGE" ]; then
-            echo "::error::No coverage.cobertura.xml found in test-results"
-            exit 1
-          fi
-          echo "Found coverage report: $COVERAGE"
-          cp "$COVERAGE" ./coverage.cobertura.xml
-      
+                 
       - name: Debug coverage path
         run: |
           echo "Working dir: $(pwd)"
