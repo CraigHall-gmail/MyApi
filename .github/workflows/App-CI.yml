@@ -89,8 +89,7 @@ jobs:
       - name: Install tools
         run: |
           dotnet tool install --global dotnet-sonarscanner
-          dotnet tool install --global dotnet-coverage
-
+         
       - name: Restore
         run: dotnet restore
 
@@ -107,19 +106,17 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.qualitygate.wait=${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }} \
             /d:sonar.coverage.exclusions="Data/**,Models/**,Program.cs" \
-            /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
+            /d:sonar.cs.cobertura.reportPaths="test-results/**/coverage.cobertura.xml"
 
       - name: Build
         run: dotnet build --no-restore -c Release
 
       - name: Test with coverage
         run: |
-          dotnet-coverage collect \
-            -f xml \
-            -o coverage.xml \
-            -- dotnet test --no-build -c Release \
-              --logger "trx;LogFileName=test-results.trx" \
-              --results-directory ./test-results
+          dotnet test --no-build -c Release \
+            --collect:"XPlat Code Coverage" \
+            --logger "trx;LogFileName=test-results.trx" \
+            --results-directory ./test-results
 
       - name: SonarCloud End
         env:
