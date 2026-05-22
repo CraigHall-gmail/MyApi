@@ -56,6 +56,8 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast");
 
+const string CitiesTag = "Cities";
+
 app.MapPost("/cities", async (CreateCityRequest request, AppDbContext db) =>
 {
     if (string.IsNullOrWhiteSpace(request.Name))
@@ -67,12 +69,25 @@ app.MapPost("/cities", async (CreateCityRequest request, AppDbContext db) =>
     return Results.Created($"/cities/{city.Id}", city);
 })
 .WithName("CreateCity")
-.WithTags("Cities");
+.WithTags(CitiesTag);
 
 app.MapGet("/cities", async (AppDbContext db) =>
     await db.Cities.OrderBy(c => c.Name).ToListAsync())
 .WithName("GetCities")
-.WithTags("Cities");
+.WithTags(CitiesTag);
+
+app.MapDelete("/cities/{id}", async (int id, AppDbContext db) =>
+{
+    var city = await db.Cities.FindAsync(id);
+    if (city is null)
+        return Results.NotFound();
+
+    db.Cities.Remove(city);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+})
+.WithName("DeleteCity")
+.WithTags(CitiesTag);
 
 app.MapGet("/cities/search", async (string? q, AppDbContext db) =>
 {
@@ -85,7 +100,7 @@ app.MapGet("/cities/search", async (string? q, AppDbContext db) =>
     return Results.Ok(results);
 })
 .WithName("SearchCities")
-.WithTags("Cities");
+.WithTags(CitiesTag);
 
 app.UseSwagger();
 app.UseSwaggerUI();
