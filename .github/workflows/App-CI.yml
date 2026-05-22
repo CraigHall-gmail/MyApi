@@ -121,8 +121,13 @@ jobs:
 
       - name: Copy coverage report
         run: |
-          find ./test-results -name "coverage.cobertura.xml" \
-            -exec cp {} ./coverage.cobertura.xml \;
+          COVERAGE=$(find ./test-results -name "coverage.cobertura.xml" | head -1)
+          if [ -z "$COVERAGE" ]; then
+            echo "::error::No coverage.cobertura.xml found — check test output"
+            exit 1
+          fi
+          echo "Found: $COVERAGE"
+          cp "$COVERAGE" ./coverage.cobertura.xml
             
       - name: Copy coverage report to known path
         run: |
