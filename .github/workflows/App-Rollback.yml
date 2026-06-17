@@ -48,7 +48,7 @@ env:
 
 jobs:
   rollback:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.environment == 'development' && '["self-hosted","azure","dev"]' || inputs.environment == 'staging' && '["self-hosted","azure","stg"]' || '["self-hosted","azure","prd"]') }}
     permissions:
       id-token: write
     environment: ${{ inputs.environment }}
