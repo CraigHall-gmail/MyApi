@@ -107,7 +107,7 @@ jobs:
   deploy:
     name: Deploy (${{ inputs.environment }})
     needs: migrate
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.environment == 'development' && 'job-runner-app-dev' || inputs.environment == 'staging' && 'job-runner-app-stg' || 'job-runner-app-prd' }}
     environment: ${{ inputs.environment }}
     permissions:
       id-token: write   # OIDC — Azure login
