@@ -107,9 +107,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          COVERAGE_PATH="${GITHUB_WORKSPACE}/coverage.cobertura.xml"
-          echo "Coverage path: $COVERAGE_PATH"
-
           dotnet sonarscanner begin \
             /k:"CraigHall-gmail_MyApi" \
             /o:"craighall-gmail" \
@@ -117,10 +114,10 @@ jobs:
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.branch.longLivedBranchesRegex="(main|master|development|release/.*)" \
             /d:sonar.qualitygate.wait=true \
-            /d:sonar.coverage.exclusions="Data/**,Models/**" \
+            /d:sonar.coverage.exclusions="Data/**,Models/**,**/Program.cs" \
             /d:sonar.exclusions=".github/**,.vscode/**,**/appsettings*.json,Dockerfile" \
             /d:sonar.scanner.forceFullAnalysis=true \
-            /d:sonar.cs.cobertura.reportPaths="$COVERAGE_PATH"
+            /d:sonar.cs.cobertura.reportPaths="**/coverage.cobertura.xml"
             
       - name: Build
         run: dotnet build --no-restore -c Release
@@ -129,29 +126,10 @@ jobs:
         run: |
           dotnet test --no-build -c Release \
             --logger "trx;LogFileName=test-results.trx" \
-            --results-directory ./test-results
+            --results-directory ./test-results \
+            --collect:"XPlat Code Coverage" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
                  
-      - name: Debug coverage path
-        run: |
-          echo "Working dir: $(pwd)"
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          ls -la "$GITHUB_WORKSPACE/coverage.cobertura.xml" 2>/dev/null || echo "FILE NOT FOUND"
-          find . -name "coverage.cobertura.xml" 2>/dev/null
-      
-      - name: Debug proto coverage reference
-        run: |
-          grep -r "cobertura\|coverage" .sonarqube/out/ --include="*.xml" -l 2>/dev/null || echo "No coverage refs in proto output"
-          find .sonarqube/out -name "*.xml" | head -10
-              
-      - name: Verify coverage file is readable
-        run: |
-          echo "=== File check ==="
-          ls -la "$GITHUB_WORKSPACE/coverage.cobertura.xml"
-          echo "=== First 5 lines ==="
-          head -5 "$GITHUB_WORKSPACE/coverage.cobertura.xml"
-          echo "=== Line rate ==="
-          grep 'line-rate' "$GITHUB_WORKSPACE/coverage.cobertura.xml" | head -3
-            
       - name: SonarCloud End
         if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.base_ref == 'main')
         continue-on-error: true
