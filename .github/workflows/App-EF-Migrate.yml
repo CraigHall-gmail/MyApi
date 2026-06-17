@@ -70,7 +70,7 @@ permissions:
 jobs:
   migrate:
     name: Migrate (${{ inputs.environment }})
-    runs-on: ${{ inputs.environment == 'development' && 'job-runner-app-dev' || inputs.environment == 'staging' && 'job-runner-app-stg' || 'job-runner-app-prd' }}
+    runs-on: ${{ fromJSON(inputs.environment == 'development' && '["self-hosted","azure","dev"]' || inputs.environment == 'staging' && '["self-hosted","azure","stg"]' || '["self-hosted","azure","prd"]') }}
     environment: ${{ inputs.environment }}
 
     env:
