@@ -70,7 +70,7 @@ permissions:
 jobs:
   migrate:
     name: Migrate (${{ inputs.environment }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.environment == 'development' && 'job-runner-app-dev' || inputs.environment == 'staging' && 'job-runner-app-stg' || 'job-runner-app-prd' }}
     environment: ${{ inputs.environment }}
 
     env:

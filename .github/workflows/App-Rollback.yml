@@ -48,7 +48,7 @@ env:
 
 jobs:
   rollback:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.environment == 'development' && 'job-runner-app-dev' || inputs.environment == 'staging' && 'job-runner-app-stg' || 'job-runner-app-prd' }}
     permissions:
       id-token: write
     environment: ${{ inputs.environment }}
