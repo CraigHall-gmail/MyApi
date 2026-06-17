@@ -97,7 +97,9 @@ jobs:
         run: dotnet build MyApi.csproj --configuration Release --no-incremental
 
       - name: Install EF Core tools
-        run: dotnet tool install --global dotnet-ef
+        run: |
+          dotnet tool install --global dotnet-ef
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Azure login (OIDC)
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
