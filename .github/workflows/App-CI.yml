@@ -274,3 +274,30 @@ jobs:
       AZURE_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  # ── Job 6: Tag release ────────────────────────────────────────────────────
+  # Runs on a GitHub-hosted runner (gh CLI always present) after production
+  # deploy succeeds. Kept separate from _shared-cd.yml so the self-hosted
+  # production runner doesn't need gh CLI installed.
+  tag-release:
+    needs: [build-push, deploy-production]
+    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/hotfix/')) && needs.build-push.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag production release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION:  ${{ needs.build-push.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" --silent 2>/dev/null; then
+            echo "Tag ${TAG} already exists, skipping."
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -X POST \
+              -f ref="refs/tags/${TAG}" \
+              -f sha="${GITHUB_SHA}"
+            echo "Tagged ${GITHUB_SHA} as ${TAG}"
+          fi
