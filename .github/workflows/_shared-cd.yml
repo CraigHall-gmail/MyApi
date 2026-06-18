@@ -237,25 +237,7 @@ jobs:
               --revision       "$rev"
           done
 
-      # ── Step 6: Tag the commit with the semantic version (production only) ─
-      - name: Tag production release
-        if: inputs.environment == 'production' && inputs.version != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="v${INPUT_VERSION}"
-          if gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" --silent 2>/dev/null; then
-            echo "Tag ${TAG} already exists, skipping."
-          else
-            gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -X POST \
-              -f ref="refs/tags/${TAG}" \
-              -f sha="${GITHUB_SHA}"
-            echo "Tagged ${GITHUB_SHA} as ${TAG}"
-          fi
-
-      # ── Step 7: Rollback on failure ───────────────────────────────────────
+      # ── Step 6: Rollback on failure ───────────────────────────────────────
       - name: Rollback green revision on failure
         if: failure() && steps.deploy-green.outputs.revision != ''
         run: |
