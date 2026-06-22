@@ -39,7 +39,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 
 name: App - CI (Build, Test & Deploy)
-run-name: "${{ github.ref_name }} · #${{ github.run_number }}"
+run-name: "${{ github.workflow }} · ${{ github.ref_name }} · #${{ github.run_number }}"
 
 on:
   push:
